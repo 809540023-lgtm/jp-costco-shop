@@ -4,6 +4,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const { fetchComparisonPrices } = require(path.join(__dirname, "..", "lib", "price-compare.js"));
 
 const root = path.join(__dirname, "..");
 const dbPath = process.env.DB_PATH || path.join(root, "data", "jp-costco.db");
@@ -13,6 +14,11 @@ db.exec("PRAGMA journal_mode = WAL;");
 
 const n = db.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name='products'").get().n;
 if (n === 0) db.exec(fs.readFileSync(path.join(root, "lib", "schema.sql"), "utf8"));
+// 既有資料庫補欄位
+for (const [c, t] of [["english_name", "TEXT"], ["description", "TEXT"], ["summary", "TEXT"], ["features", "TEXT"]]) {
+  const r = db.prepare("SELECT count(*) n FROM pragma_table_info(?) WHERE name=?").get("products", c);
+  if (r.n === 0) db.exec(`ALTER TABLE products ADD COLUMN ${c} ${t}`);
+}
 
 const API = "https://www.costco.co.jp/rest/v2/japan/products/search";
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15";
@@ -55,6 +61,32 @@ async function fetchPage(page, size = 100) {
   return res.json();
 }
 
+async function fetchDetail(code) {
+  const url = `https://www.costco.co.jp/rest/v2/japan/products/${code}?fields=FULL`;
+  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
+  if (!res.ok) return {};
+  const d = await res.json();
+  // 規格/功能：從 classifications 的 featureValues 彙整
+  const features = [];
+  for (const c of d.classifications || []) {
+    if (!c) continue;
+    for (const f of c.features || []) {
+      for (const v of f.featureValues || []) {
+        let val = v.value;
+        if (val == null) continue;
+        if (typeof val === "object") val = JSON.stringify(val);
+        features.push({ name: f.name, value: String(val) });
+      }
+    }
+  }
+  return {
+    englishName: d.englishName || null,
+    description: d.description || null,
+    summary: d.summary || null,
+    features: features.length ? JSON.stringify(features) : null
+  };
+}
+
 async function collectTop() {
   const kept = [];
   let page = 0;
@@ -70,6 +102,7 @@ async function collectTop() {
       if (isUnshippable(name)) { skipped++; continue; }
       kept.push({
         id: `jp-${p.code}`,
+        code: p.code,
         jpName: name,
         englishName: p.englishName || null,
         price: p.price ? p.price.value : null,
@@ -83,6 +116,11 @@ async function collectTop() {
     }
     page++;
   }
+  // 對每個商品抓取完整說明（描述/摘要/規格）
+  for (let i = 0; i < kept.length; i++) {
+    const detail = await fetchDetail(kept[i].code);
+    Object.assign(kept[i], detail);
+  }
   return { kept, skipped, pages: page };
 }
 
@@ -95,16 +133,19 @@ function writeToDb(kept) {
 
   for (const p of kept) {
     db.prepare(
-      `INSERT INTO products (id, jp_name, brand, category, costco_url, image_url, jp_price, rating, review_count,
-        evidence_source, evidence_type, status, score, search_batch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,?)
+      `INSERT INTO products (id, jp_name, english_name, brand, category, costco_url, image_url, jp_price, rating, review_count,
+        description, summary, features, evidence_source, evidence_type, status, score, search_batch_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,?)
        ON CONFLICT(id) DO UPDATE SET
-         jp_name=excluded.jp_name, costco_url=excluded.costco_url, image_url=excluded.image_url,
+         jp_name=excluded.jp_name, english_name=excluded.english_name,
+         costco_url=excluded.costco_url, image_url=excluded.image_url,
          jp_price=excluded.jp_price, rating=excluded.rating, review_count=excluded.review_count,
+         description=excluded.description, summary=excluded.summary, features=excluded.features,
          evidence_source=excluded.evidence_source, evidence_type=excluded.evidence_type,
          score=excluded.score, search_batch_id=excluded.search_batch_id, updated_at=datetime('now')`
     ).run(
-      p.id, p.jpName, null, null, p.url, p.imageUrl, p.price, p.rating, p.reviewCount,
+      p.id, p.jpName, p.englishName || null, null, null, p.url, p.imageUrl, p.price, p.rating, p.reviewCount,
+      p.description || null, p.summary || null, p.features || null,
       "https://www.costco.co.jp/", "official_sell_count", 50, batchId
     );
     db.prepare("INSERT INTO product_rankings (product_id, search_batch_id, score, score_breakdown) VALUES (?,?,?,?)")
@@ -114,6 +155,28 @@ function writeToDb(kept) {
     `依官方 sellCount 排序保留前 ${kept.length} 項熱門商品（已排除 Kirkland 與冷藏/冷凍/體積大商品）。`, batchId
   );
   return batchId;
+}
+
+// 抓取並儲存其他通路比較價格（Yahoo / Amazon）
+async function saveComparisonPrices(products) {
+  let done = 0, failed = 0;
+  for (const p of products) {
+    try {
+      const comps = await fetchComparisonPrices(p.jpName);
+      db.prepare("DELETE FROM comparison_prices WHERE product_id = ?").run(p.id);
+      for (const c of comps) {
+        db.prepare("INSERT INTO comparison_prices (product_id, source, source_name, price, currency) VALUES (?,?,?,?,?)")
+          .run(p.id, c.source, c.name || null, c.price, c.currency || "JPY");
+      }
+      done++;
+      if (comps.length) {
+        console.log(`  [比較] ${p.jpName.slice(0, 20)} → ${comps.map((c) => `${c.source} ${c.currency}${c.price}`).join(", ")}`);
+      }
+    } catch (e) {
+      failed++;
+    }
+  }
+  console.log(`比較價格完成：成功 ${done} 項，失敗 ${failed} 項。`);
 }
 
 async function main() {
@@ -126,6 +189,8 @@ async function main() {
   kept.forEach((p, i) => {
     console.log(`${String(i + 1).padStart(2)}. [${p.reviewCount} 評論] ${p.jpName} ${p.priceFormatted ? "(" + p.priceFormatted + ")" : ""}`);
   });
+  console.log("\n=== 抓取其他通路比較價格 ===");
+  await saveComparisonPrices(kept);
   db.close();
 }
 

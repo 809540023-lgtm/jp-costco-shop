@@ -9,9 +9,13 @@ CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   jp_name TEXT NOT NULL,
   zh_name TEXT,
+  english_name TEXT,
   brand TEXT,
   category TEXT,
   spec TEXT,
+  description TEXT,
+  summary TEXT,
+  features TEXT, -- JSON 規格/功能列表
   jan_code TEXT,
   costco_url TEXT,
   image_url TEXT,
@@ -48,6 +52,18 @@ CREATE TABLE IF NOT EXISTS product_sources (
   source_url TEXT,
   source_title TEXT,
   evidence TEXT,
+  captured_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- 其他通路價格比較
+CREATE TABLE IF NOT EXISTS comparison_prices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id TEXT NOT NULL,
+  source TEXT NOT NULL, -- Yahoo 購物 / Amazon JP ...
+  source_name TEXT,
+  price REAL,
+  currency TEXT DEFAULT 'JPY',
   captured_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (product_id) REFERENCES products(id)
 );

@@ -66,6 +66,8 @@
 - **搜尋批次 id 修正**：改為 `sb-YYYY-MM-DD-HHMMSS`，避免同日多次執行時 `UNIQUE` 衝突。
 - **Costco 抓取模組 ✅（實際抓取）**：`lib/costco-fetch.ts` 已能從官方首頁與「新商品」頁實際解析商品（`/p/<id>` 網址），單次約 170–230 筆。商品名由 `/p/` 前最後一段網址推導。排除邏輯加入英文關鍵字（TV、Refrigerator、Mattress、Beer、SPF 等），已驗證不再保留大型家電/高法規商品。價格、評分、評論數尚未擷取（需逐商品頁解析，待後續）。
 - **前 50 名熱門商品抓取 ✅**：`scripts/scrape-top50.js`（`npm run top50`）改用官方 REST API（`/rest/v2/japan/products/search`），依官方 `sellCount-desc` 排序抓取前 50 名，並擷取日本商品名、價格、評分、評論數、圖片。自動排除：Kirkland 自有品牌、冷藏/冷凍/體積大商品、隱形眼鏡等醫療器材、酒精飲料、數位禮物卡、保健食品。
+- **商品完整文字說明 ✅**：每個商品再抓取官方 FULL 詳情（`description` 說明、`summary` 重點、`features` 規格功能），存入 products 表（新增 `english_name`/`description`/`summary`/`features` 欄位，含 idempotent migration），並在 `/costco/product/[id]` 顯示「商品說明」「商品重點」「規格與功能」。
+- **其他通路價格比較 ✅**：`lib/price-compare.js` 依日文名搜尋 **Yahoo 購物**（JPY）與 **Amazon JP**（幣別依伺服器 IP），存入 `comparison_prices` 表，並在商品頁顯示「其他通路價格比較」（含日本 Costco 參考價）。
 - **修正 lib/line.ts 的 Authorization header**（先前被截斷成 `******`）。
 - **SQLite 並行鎖修正**：`lib/db.ts` 加入 `busy_timeout` 與 WAL 例外處理，解決 build 時「database is locked」。
 

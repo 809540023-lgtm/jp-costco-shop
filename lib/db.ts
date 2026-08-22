@@ -22,6 +22,30 @@ const table = db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='ta
 if (table.n === 0) {
   const schema = fs.readFileSync(path.join(process.cwd(), "lib", "schema.sql"), "utf8");
   db.exec(schema);
+} else {
+  // 既有資料庫補欄位（idempotent migration）
+  migrateColumn(db, "products", "english_name", "TEXT");
+  migrateColumn(db, "products", "description", "TEXT");
+  migrateColumn(db, "products", "summary", "TEXT");
+  migrateColumn(db, "products", "features", "TEXT");
+  // 確保比較價格表存在
+  db.exec(`CREATE TABLE IF NOT EXISTS comparison_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_name TEXT,
+    price REAL,
+    currency TEXT DEFAULT 'JPY',
+    captured_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (product_id) REFERENCES products(id)
+  );`);
+}
+
+function migrateColumn(conn: DatabaseSync, table: string, column: string, type: string) {
+  const r = conn.prepare(`SELECT count(*) AS n FROM pragma_table_info(?) WHERE name = ?`).get(table, column) as { n: number };
+  if (r.n === 0) {
+    conn.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
 }
 export function audit(actor: string, action: string, entityType: string, entityId: string, detail?: string) {
   db.prepare("INSERT INTO audit_logs (actor, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)")
