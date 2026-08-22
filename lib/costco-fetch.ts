@@ -5,32 +5,37 @@ import type { RawProduct } from "./search";
 
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
-const SEED_URLS = [
-  "https://www.costco.co.jp/",
-  "https://www.costco.co.jp/Hot-Buys",
-  "https://www.costco.co.jp/New-Items"
+const SEED_URLS: { url: string; evidenceType: string }[] = [
+  { url: "https://www.costco.co.jp/", evidenceType: "official_page" },
+  { url: "https://www.costco.co.jp/c/WhatsNew", evidenceType: "official_new" }
 ];
 
-// 從 HTML 中粗略擷取商品連結與標題。
-function parseProducts(html: string, sourceUrl: string): RawProduct[] {
+// 從 HTML 中擷取商品頁連結。日本 Costco 商品頁網址格式：/.../p/<數字 id>
+export function parseProducts(html: string, sourceUrl: string, evidenceType: string): RawProduct[] {
   const out: RawProduct[] = [];
   const seen = new Set<string>();
-  // 商品頁網址通常含 /Product/ 或 /product/ 或 .p 結尾
-  const re = /<a[^>]+href=["']([^"']*?\/[Pp]roduct\/[^"']*?)["'][^>]*>(.*?)<\/a>/g;
+  const re = /<a[^>]+href=["']([^"']*?\/p\/\d+[^"']*?)["'][^>]*>/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const href = m[1];
-    const title = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-    if (!title || title.length < 2) continue;
-    const id = `jp-${Buffer.from(href).toString("base64url").slice(0, 24)}`;
+    const rawHref = m[1];
+    const cleanHref = rawHref.replace(/&amp;/g, "&").split("?")[0];
+    const idMatch = cleanHref.match(/\/p\/(\d+)/);
+    if (!idMatch) continue;
+    const productId = idMatch[1];
+    const id = `jp-${productId}`;
     if (seen.has(id)) continue;
     seen.add(id);
+    // 商品名由網址路徑推導：取 /p/ 前最後一個 slug 段
+    const segments = cleanHref.split("/").filter(Boolean);
+    const pIndex = segments.findIndex((s) => s === "p");
+    const slug = pIndex > 0 ? segments[pIndex - 1] : undefined;
+    const jpName = slug ? slug.replace(/-/g, " ") : `Costco 商品 ${productId}`;
     out.push({
       id,
-      jpName: title,
-      costcoUrl: new URL(href, sourceUrl).toString(),
+      jpName,
+      costcoUrl: new URL(cleanHref, sourceUrl).toString(),
       evidenceSource: sourceUrl,
-      evidenceType: "official_page"
+      evidenceType
     });
   }
   return out;
@@ -39,7 +44,7 @@ function parseProducts(html: string, sourceUrl: string): RawProduct[] {
 export async function fetchCostcoJapan(): Promise<RawProduct[]> {
   const results: RawProduct[] = [];
   const errors: string[] = [];
-  for (const url of SEED_URLS) {
+  for (const { url, evidenceType } of SEED_URLS) {
     try {
       const res = await fetch(url, {
         headers: { "User-Agent": UA, "Accept-Language": "ja-JP,ja;q=0.9" },
@@ -47,7 +52,7 @@ export async function fetchCostcoJapan(): Promise<RawProduct[]> {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
-      const parsed = parseProducts(html, url);
+      const parsed = parseProducts(html, url, evidenceType);
       results.push(...parsed);
       console.log(`[costco-fetch] ${url} → ${parsed.length} 筆`);
     } catch (e) {
@@ -57,7 +62,14 @@ export async function fetchCostcoJapan(): Promise<RawProduct[]> {
   if (errors.length) {
     console.warn("[costco-fetch] 部分來源失敗:", errors.join(" | "));
   }
-  // 去重（依 id）
-  const seen = new Set<string>();
-  return results.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+  // 去重（依 id），並優先保留較強的證據類型：hot_buy > new > page
+  const rank = { official_hot_buy: 3, official_new: 2, official_page: 1 };
+  const byId = new Map<string, RawProduct>();
+  for (const p of results) {
+    const prev = byId.get(p.id);
+    if (!prev || (rank[p.evidenceType as keyof typeof rank] ?? 0) > (rank[prev.evidenceType as keyof typeof rank] ?? 0)) {
+      byId.set(p.id, p);
+    }
+  }
+  return [...byId.values()];
 }

@@ -36,12 +36,12 @@ function estimate(raw: RawProduct): RankingInput & {
   easilyAvailableInTaiwan: boolean;
 } {
   const text = `${raw.jpName} ${raw.category ?? ""} ${raw.spec ?? ""}`.toLowerCase();
-  const isGlobalCommon = /kirkland/.test(text) && /衛生紙|紙巾|礦泉|水$/.test(text);
-  const bulky = /冰箱|電視|洗衣機|床墊|sofa/.test(text);
-  const heavy = /米|米袋|飲料箱/.test(text) && /kg|公斤/.test(text);
-  const perishable = /肉|魚|生鮮|冷藏|冷凍|乳|卵/.test(text);
-  const highRegulation = /薬|医療|酒|化粧|健康食品/.test(text);
-  const easilyAvailableInTaiwan = /iphone|ipad|switch|sony|panasonic|dyson/.test(text);
+  const isGlobalCommon = /kirkland/.test(text) && /衛生紙|紙巾|礦泉|水$|tissue|paper towel|water/.test(text);
+  const bulky = /冰箱|電視|洗衣機|床墊|sofa|tv|refrigerator|fridge|washing machine|mattress|chair|furniture|stand|desk|table|grill|bike|bicycle/.test(text);
+  const heavy = /米|米袋|飲料箱|rice|water|drink|beverage|kg|リットル/.test(text) && /kg|公斤|リットル|24|30|40/.test(text);
+  const perishable = /肉|魚|生鮮|冷藏|冷凍|乳|卵|meat|fish|fresh|frozen|dairy|egg|milk|beef|pork|chicken|seafood/.test(text);
+  const highRegulation = /薬|医療|酒|化粧|健康食品|medicine|drug|alcohol|beer|wine|cosmetic|supplement|sun|sunscreen|spf|vitamin|pharma/.test(text);
+  const easilyAvailableInTaiwan = /iphone|ipad|switch|sony|panasonic|dyson|samsung|lg|apple|nintendo/.test(text);
   return {
     isHotBuy: raw.isHotBuy ?? false,
     isNew: raw.isNew ?? false,
@@ -82,7 +82,14 @@ export function runDailySearch(rawProducts: RawProduct[]): { batchId: string; co
     db.prepare(
       `INSERT INTO products (id, jp_name, brand, category, spec, jan_code, costco_url, image_url, jp_price,
         is_hot_buy, is_new, rating, review_count, evidence_source, evidence_type, status, score, search_batch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,?)`
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         jp_name=excluded.jp_name, brand=excluded.brand, category=excluded.category, spec=excluded.spec,
+         jan_code=excluded.jan_code, costco_url=excluded.costco_url, image_url=excluded.image_url,
+         jp_price=excluded.jp_price, is_hot_buy=excluded.is_hot_buy, is_new=excluded.is_new,
+         rating=excluded.rating, review_count=excluded.review_count,
+         evidence_source=excluded.evidence_source, evidence_type=excluded.evidence_type,
+         score=excluded.score, search_batch_id=excluded.search_batch_id, updated_at=datetime('now')`
     ).run(
       raw.id, raw.jpName, raw.brand ?? null, raw.category ?? null, raw.spec ?? null, raw.janCode ?? null,
       raw.costcoUrl ?? null, raw.imageUrl ?? null, raw.jpPrice ?? null,

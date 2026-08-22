@@ -21,7 +21,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 
 function assess(raw) {
   const text = `${raw.jpName} ${raw.category || ""}`.toLowerCase();
-  const exclude = /kirkland/.test(text) || /衛生紙|紙巾|礦泉/.test(text) || /冰箱|電視|洗衣機/.test(text) || /肉|魚|生鮮|冷藏/.test(text) || /薬|医療|酒|化粧/.test(text);
+  const exclude = /kirkland/.test(text) || /衛生紙|紙巾|礦泉/.test(text) || /冰箱|電視|洗衣機|sofa|tv|refrigerator|fridge|washing machine|mattress|chair|furniture|stand|desk|table|grill/.test(text) || /肉|魚|生鮮|冷藏|meat|fish|fresh|frozen|dairy|egg|milk|beef|pork|chicken|seafood/.test(text) || /薬|医療|酒|化粧|medicine|drug|alcohol|beer|wine|cosmetic|supplement|sun|sunscreen|spf|vitamin/.test(text) || /iphone|ipad|switch|sony|panasonic|dyson|samsung|lg|apple|nintendo/.test(text);
   const parts = {
     officialHotBuy: raw.isHotBuy ? W.officialHotBuy : 0,
     officialNew: raw.isNew ? W.officialNew : 0,
@@ -49,7 +49,12 @@ function run(rawProducts) {
     if (exclude || total < 20) continue;
     db.prepare(
       `INSERT INTO products (id, jp_name, category, jp_price, is_hot_buy, is_new, rating, review_count, status, score, search_batch_id)
-       VALUES (?,?,?,?,?,?,?,?,'pending_review',?,?)`
+       VALUES (?,?,?,?,?,?,?,?,'pending_review',?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         jp_name=excluded.jp_name, category=excluded.category, jp_price=excluded.jp_price,
+         is_hot_buy=excluded.is_hot_buy, is_new=excluded.is_new, rating=excluded.rating,
+         review_count=excluded.review_count, score=excluded.score,
+         search_batch_id=excluded.search_batch_id, updated_at=datetime('now')`
     ).run(raw.id, raw.jpName, raw.category || null, raw.jpPrice || null,
       raw.isHotBuy ? 1 : 0, raw.isNew ? 1 : 0, raw.rating || null, raw.reviewCount || 0, total, batchId);
     db.prepare("INSERT INTO product_rankings (product_id, search_batch_id, score) VALUES (?,?,?)").run(raw.id, batchId, total);
