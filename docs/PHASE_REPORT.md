@@ -41,9 +41,11 @@
 - 實際抓取 Costco Japan 需搭配 DOM 解析（官方未提供公開 JSON API），已在 script 中註記。
 - 排程需部署後設定（每日 08:00）。
 
-## Phase 8：通知與部署 ⚠️（部分完成）
+## Phase 8：通知與部署 ⚠️（已部署，尚待設定）
 - `lib/line.ts`：LINE 第一階段（網站網址）就緒；第二階段（Messaging API）需設定環境變數。
-- 部署（Render/GitHub Pages）與 cron、備份、錯誤監控**尚未設定**。
+- 已部署到 **Render**：https://jp-costco-shop.onrender.com（GitHub：https://github.com/809540023-lgtm/jp-costco-shop）。
+- **重要限制**：Render 免費層檔案系統是暫存的，SQLite 資料在每次重啟後會清空。正式上線需改用**持久化資料庫（Supabase PostgreSQL）** 或掛載 Render 磁碟，並加入測試/正式資料。
+- cron、備份、錯誤監控尚未設定。
 
 ## 測試
 - `npx vitest run`：12 通過（ranking 5、validation 7）。
