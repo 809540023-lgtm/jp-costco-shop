@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminBatches() {
+export default async function AdminBatches() {
+  await requireAdmin();
   const batches = db.prepare("SELECT * FROM search_batches ORDER BY search_date DESC LIMIT 30").all() as any[];
   return (
     <div>

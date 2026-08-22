@@ -58,3 +58,17 @@
 3. 設定 LINE 第二階段（token、admin ID）。
 4. 實作實際 Costco Japan 抓取（反爬解析）。
 5. 加入正式後台登入與權限控管。
+
+## 更新記錄（2026-08-22 後續補強）
+- **後台登入與權限控管 ✅**：新增 `ADMIN_PASSWORD` 登入、HMAC 簽章 cookie（`lib/auth.ts`）、`/admin/login`、登出。`/admin/*` 與 `/api/export` 未登入會導向或回 401。
+- **修正 Server Action + redirect 的 `Connection closed` 錯誤**：此 Next.js 版本在 `next start` 下，Server Action 呼叫 `redirect()` 會失敗。已將管理操作改為 **Route Handler（`/api/admin/login|logout|products/approve|products/publish|orders/status`）+ 客戶端元件**，並用 curl 與真實 cookie 驗證全部流程。
+- **每日 cron 端點 ✅**：`/api/cron/run-search`（需 `CRON_SECRET`），`render.yaml` 加入 Cron Job（每日 08:00 Asia/Taipei），失敗會回 500 並保留上一期已發布商品。
+- **搜尋批次 id 修正**：改為 `sb-YYYY-MM-DD-HHMMSS`，避免同日多次執行時 `UNIQUE` 衝突。
+- **Costco 抓取模組**：新增 `lib/costco-fetch.ts`，嘗試從官方頁面解析商品連結（官方無公開 JSON API）。目前實際網站未解析出商品（可能被反爬），系統會如實回傳 0 筆，不會硬湊。
+- **修正 lib/line.ts 的 Authorization header**（先前被截斷成 `******`）。
+- **SQLite 並行鎖修正**：`lib/db.ts` 加入 `busy_timeout` 與 WAL 例外處理，解決 build 時「database is locked」。
+
+### 尚未完成
+- Supabase 持久化：**受阻**——組織「crewAI」有逾期帳單，Supabase 拒絕建立新專案，需先在 dashboard 結清。
+- LINE 第二階段：需 `LINE_CHANNEL_ACCESS_TOKEN` 與 `LINE_ADMIN_ID`。
+- 實際 Costco Japan 商品抓取解析（需處理反爬/選擇器）。

@@ -1,0 +1,37 @@
+# Render 部署設定
+# - Web Service：購物網站
+# - Cron Job：每日 08:00 (Asia/Taipei) 執行搜尋
+# 注意：Render 免費層檔案系統為暫存，SQLite 資料會在重啟後清空。
+# 正式上線請改用 Supabase PostgreSQL 或掛載 Render 磁碟持久化。
+
+services:
+  - type: web
+    name: jp-costco-shop
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: SITE_URL
+        value: https://jp-costco-shop.onrender.com
+      - key: LINE_PHASE
+        value: "1"
+      - key: CRON_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+  - type: cron
+    name: jp-costco-daily-search
+    runtime: node
+    plan: free
+    schedule: "0 8 * * *"
+    envVars:
+      - key: SITE_URL
+        value: https://jp-costco-shop.onrender.com
+      - key: CRON_SECRET
+        sync: false
+    buildCommand: npm install
+    startCommand: curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-search"

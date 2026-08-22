@@ -38,9 +38,11 @@ function assess(raw) {
 }
 
 function run(rawProducts) {
-  const batchId = `sb-${new Date().toISOString().slice(0, 10)}`;
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const batchId = `sb-${date}-${now.toISOString().slice(11, 19).replace(/:/g, "")}`;
   db.prepare("INSERT INTO search_batches (id, search_date, status, product_count) VALUES (?,?,?,?)")
-    .run(batchId, new Date().toISOString().slice(0, 10), rawProducts.length);
+    .run(batchId, date, rawProducts.length);
   let kept = 0;
   for (const raw of rawProducts) {
     const { exclude, total } = assess(raw);

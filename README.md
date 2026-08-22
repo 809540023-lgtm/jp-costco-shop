@@ -47,5 +47,19 @@ npm run search:run   # 手動執行一次每日搜尋
 | `LINE_PHASE` | LINE 銜接階段（`1` 或 `2`） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 第二階段 LINE Messaging API token |
 | `LINE_ADMIN_ID` | 管理員 LINE ID |
+| `ADMIN_PASSWORD` | 後台登入密碼（未設定時預設 `changeme`，正式環境務必設定） |
+| `CRON_SECRET` | 每日搜尋 cron 的保護密鑰 |
+| `SUPABASE_ACCESS_TOKEN` | Supabase 管理 API 個人權杖 |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 持久化資料庫（尚未啟用） |
+
+## 後台權限控管
+- `/admin/*` 需登入（`ADMIN_PASSWORD`），未登入會導向 `/admin/login`。
+- 管理操作（核准/發布/改訂單狀態/匯出）透過受保護的 API route 執行，未授權回傳 401。
+- 身分證字號一律遮罩顯示。
+
+## 每日搜尋 cron
+- 觸發端點：`GET /api/cron/run-search?secret=<CRON_SECRET>`（或 header `x-cron-secret`）。
+- 由 `render.yaml` 的 Cron Job 於每天 08:00 (Asia/Taipei) 呼叫。
+- 搜尋失敗時回傳 500 並保留上一期已發布商品。
 
 > 本系統僅供研究與開發，實際報關請依現行法規與報關業者要求執行。

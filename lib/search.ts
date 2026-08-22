@@ -64,10 +64,12 @@ function estimate(raw: RawProduct): RankingInput & {
 
 // 建立每日搜尋批次並寫入待審核商品。
 export function runDailySearch(rawProducts: RawProduct[]): { batchId: string; count: number } {
-  const batchId = `sb-${new Date().toISOString().slice(0, 10)}`;
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const batchId = `sb-${date}-${now.toISOString().slice(11, 19).replace(/:/g, "")}`;
   db.prepare("INSERT INTO search_batches (id, search_date, status, product_count) VALUES (?, ?, 'running', ?)").run(
     batchId,
-    new Date().toISOString().slice(0, 10),
+    date,
     rawProducts.length
   );
 

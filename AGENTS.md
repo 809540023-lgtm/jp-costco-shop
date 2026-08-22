@@ -27,6 +27,14 @@ npm run search:run # 手動執行每日搜尋
 npm test           # 執行測試
 ```
 
+## 後台權限
+- 後台需登入：環境變數 `ADMIN_PASSWORD`（未設定時預設 `changeme`）。
+- 管理操作走 API route（`/api/admin/*`），全部需 `isAdmin()` 檢查。
+- 每日搜尋端點：`GET /api/cron/run-search?secret=<CRON_SECRET>`。
+
+## 重要：不要用「含 redirect() 的 Server Action」
+本專案的 Next.js 版本（15.x + React 19）在 `next start` 下，Server Action 呼叫 `redirect()` 會觸發 `Connection closed`（digest 1962105350）。請改用 **Route Handler + 客戶端元件**（fetch API 後 `router.refresh()` / `window.location`）做管理操作。
+
 ## 敏感資料
 - 不把 API Token、LINE token、身分證字號寫入程式碼或 commit。
 - 使用環境變數（`.env`，且加入 `.gitignore`）。
