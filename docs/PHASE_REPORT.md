@@ -65,6 +65,7 @@
 - **每日 cron 端點 ✅**：`/api/cron/run-search`（需 `CRON_SECRET`），`render.yaml` 加入 Cron Job（每日 08:00 Asia/Taipei），失敗會回 500 並保留上一期已發布商品。
 - **搜尋批次 id 修正**：改為 `sb-YYYY-MM-DD-HHMMSS`，避免同日多次執行時 `UNIQUE` 衝突。
 - **Costco 抓取模組 ✅（實際抓取）**：`lib/costco-fetch.ts` 已能從官方首頁與「新商品」頁實際解析商品（`/p/<id>` 網址），單次約 170–230 筆。商品名由 `/p/` 前最後一段網址推導。排除邏輯加入英文關鍵字（TV、Refrigerator、Mattress、Beer、SPF 等），已驗證不再保留大型家電/高法規商品。價格、評分、評論數尚未擷取（需逐商品頁解析，待後續）。
+- **前 50 名熱門商品抓取 ✅**：`scripts/scrape-top50.js`（`npm run top50`）改用官方 REST API（`/rest/v2/japan/products/search`），依官方 `sellCount-desc` 排序抓取前 50 名，並擷取日本商品名、價格、評分、評論數、圖片。自動排除：Kirkland 自有品牌、冷藏/冷凍/體積大商品、隱形眼鏡等醫療器材、酒精飲料、數位禮物卡、保健食品。
 - **修正 lib/line.ts 的 Authorization header**（先前被截斷成 `******`）。
 - **SQLite 並行鎖修正**：`lib/db.ts` 加入 `busy_timeout` 與 WAL 例外處理，解決 build 時「database is locked」。
 

@@ -29,6 +29,7 @@ npm run dev       # 啟動開發伺服器
 ## 每日搜尋
 ```bash
 npm run search:run   # 手動執行一次每日搜尋
+npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序）
 ```
 正式環境可設定 cron 於每天早上 08:00 執行。
 
