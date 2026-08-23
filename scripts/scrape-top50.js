@@ -110,7 +110,11 @@ async function collectTop() {
         rating: p.averageRating || null,
         reviewCount: p.numberOfReviews || 0,
         url: p.url ? new URL(p.url, "https://www.costco.co.jp/").toString() : null,
-        imageUrl: p.images && p.images[0] ? p.images[0].url : null
+        imageUrl: (() => {
+          const u = p.images && p.images[0] ? p.images[0].url : null;
+          // 官方回傳相對路徑，需補上前綴
+          return u ? (u.startsWith("http") ? u : `https://www.costco.co.jp${u.startsWith("/") ? "" : "/"}${u}`) : null;
+        })()
       });
       if (kept.length >= TARGET) break;
     }
