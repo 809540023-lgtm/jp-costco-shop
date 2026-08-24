@@ -79,11 +79,19 @@ async function fetchDetail(code) {
       }
     }
   }
+  // 高解析度圖片：優先 zoom(1200)，其次 product(740)
+  const abs = (u) => (u.startsWith("http") ? u : `https://www.costco.co.jp${u.startsWith("/") ? "" : "/"}${u}`);
+  let imageUrl = null;
+  for (const fmt of ["zoom", "product"]) {
+    const hit = (d.images || []).find((i) => i.format === fmt && i.url);
+    if (hit) { imageUrl = abs(hit.url); break; }
+  }
   return {
     englishName: d.englishName || null,
     description: d.description || null,
     summary: d.summary || null,
-    features: features.length ? JSON.stringify(features) : null
+    features: features.length ? JSON.stringify(features) : null,
+    imageUrl
   };
 }
 

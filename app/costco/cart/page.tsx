@@ -46,7 +46,7 @@ export default function CartPage() {
                 </div>
                 <div className="flex-1">
                   <div className="font-bold">{i.name}</div>
-                  <div className="text-sm text-gray-500">¥{i.unitPrice.toLocaleString()}</div>
+                  <div className="text-sm text-gray-500">NT${i.unitPrice.toLocaleString()}</div>
                   <div className="mt-1 flex items-center gap-2">
                     <button onClick={() => setQty(i.productId, i.quantity - 1)} className="h-8 w-8 rounded-lg border">−</button>
                     <span>{i.quantity}</span>
@@ -59,7 +59,7 @@ export default function CartPage() {
           </div>
           <div className="mt-4 flex items-center justify-between text-lg font-extrabold">
             <span>小計</span>
-            <span>¥{total.toLocaleString()}</span>
+            <span>NT${total.toLocaleString()}</span>
           </div>
           <a href="/costco/checkout" className="btn btn-primary mt-3 w-full text-lg">前往結帳</a>
         </>

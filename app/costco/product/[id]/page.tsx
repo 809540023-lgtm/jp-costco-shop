@@ -14,7 +14,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const product = db.prepare("SELECT * FROM products WHERE id = ? AND status='published'").get(id) as any;
   if (!product) notFound();
 
-  const price = product.jp_price || 0;
+  const price = product.taiwan_suggested_price || 0;
   const features: { name: string; value: string }[] = (() => {
     if (!product.features) return [];
     try { return JSON.parse(product.features); } catch { return []; }
@@ -44,8 +44,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <h1 className="text-xl font-extrabold">{product.zh_name || product.jp_name}</h1>
           <p className="mt-1 text-sm text-gray-500">{product.jp_name}{product.english_name ? `（${product.english_name}）` : null}</p>
           <div className="mt-3 flex items-end gap-2">
-            <span className="text-2xl font-extrabold text-brand">¥{Math.round(price).toLocaleString()}</span>
-            {product.taiwan_suggested_price ? <span className="text-sm text-gray-400">NT${Math.round(product.taiwan_suggested_price).toLocaleString()}</span> : null}
+            <span className="text-2xl font-extrabold text-brand">NT${Math.round(price).toLocaleString()}</span>
+            {product.jp_price ? <span className="text-sm text-gray-400">日本 ¥{Math.round(product.jp_price).toLocaleString()}</span> : null}
           </div>
 
           <dl className="mt-4 space-y-2 text-sm">

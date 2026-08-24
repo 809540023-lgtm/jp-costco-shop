@@ -25,7 +25,7 @@ export default async function AdminOrders() {
                 <span className="text-sm text-gray-500">{o.status}</span>
               </div>
               <div className="mt-2 text-sm text-gray-600">
-                收件人：{full?.customer?.name} · 總額 ¥{Math.round(o.total_amount).toLocaleString()}
+                收件人：{full?.customer?.name} · 總額 NT${Math.round(o.total_amount).toLocaleString()}
               </div>
               <div className="mt-1 text-sm text-gray-600">
                 報關身分證：<span className="font-mono">{maskIdNumber(full?.customs?.id_number || "")}</span>
