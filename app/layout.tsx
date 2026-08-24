@@ -13,7 +13,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="sticky top-0 z-20 bg-brand text-white shadow">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
             <a href="/costco" className="text-lg font-extrabold">🛒 日本 Costco</a>
-            <a href="/costco/cart" className="font-bold">購物車</a>
+            <nav className="flex items-center gap-3">
+              <a href="/costco/live" className="font-bold text-amber-200">📺 直播</a>
+              <a href="/costco/cart" className="font-bold">購物車</a>
+            </nav>
           </div>
         </header>
         <main className="mx-auto max-w-2xl px-4 pb-20 pt-4">{children}</main>

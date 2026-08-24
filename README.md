@@ -20,6 +20,7 @@ npm run dev       # 啟動開發伺服器
 | 路徑 | 功能 |
 |------|------|
 | `/costco` | 本期日本 Costco 精選商品總覽 |
+| `/costco/live` | 美洲區好市多 · 每週商品直播（含一鍵截圖儲存） |
 | `/costco/product/[id]` | 單一商品介紹頁 |
 | `/costco/cart` | 購物車（localStorage） |
 | `/costco/checkout` | 結帳與報關資料表單 |
@@ -57,6 +58,7 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 | `CRON_SECRET` | 每日搜尋 cron 的保護密鑰 |
 | `SUPABASE_ACCESS_TOKEN` | Supabase 管理 API 個人權杖 |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 持久化資料庫（尚未啟用） |
+| `LIVE_STREAM_URL` | 直播串流網址（`.m3u8` 或 `.mp4`；未設定時用示範串流） |
 
 ## 後台權限控管
 - `/admin/*` 需登入（`ADMIN_PASSWORD`），未登入會導向 `/admin/login`。
