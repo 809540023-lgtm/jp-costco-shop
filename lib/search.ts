@@ -118,5 +118,5 @@ export function getPublishedProducts(collectionId?: string) {
        WHERE c.id = ? ORDER BY i.rank ASC`
     ).all(collectionId) as any[];
   }
-  return db.prepare("SELECT * FROM products WHERE status='published' ORDER BY score DESC LIMIT 50").all() as any[];
+  return db.prepare("SELECT * FROM products WHERE status='published' ORDER BY score DESC, updated_at DESC").all() as any[];
 }

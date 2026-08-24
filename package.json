@@ -11,6 +11,7 @@
     "db:init": "node scripts/init-db.js",
     "search:run": "node scripts/run-search.js",
     "top50": "node scripts/scrape-top50.js",
+    "categories": "node scripts/scrape-categories.js",
     "seed:published": "node scripts/seed-published.js",
     "seed": "node scripts/seed.js"
   },
