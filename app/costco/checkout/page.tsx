@@ -84,7 +84,7 @@ export default function CheckoutPage() {
           {error ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p> : null}
 
           <div className="mt-4 flex items-center justify-between text-lg font-extrabold">
-            <span>應付總額</span><span>NT${total.toLocaleString()}</span>
+            <span>應付總額</span><span>¥{total.toLocaleString()}</span>
           </div>
           <button onClick={submit} className="btn btn-primary mt-3 w-full text-lg">送出訂單</button>
         </>

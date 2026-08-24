@@ -54,7 +54,7 @@ export default function LivePage() {
               <div className="p-3">
                 <div className="text-sm font-bold leading-snug line-clamp-2">{p.zh_name || p.jp_name}</div>
                 <div className="mt-1 text-sm font-extrabold text-brand">
-                  NT${Math.round(p.taiwan_suggested_price || p.jp_price || 0)}
+                  ¥{Math.round(p.jp_price || 0).toLocaleString()}
                 </div>
               </div>
             </a>

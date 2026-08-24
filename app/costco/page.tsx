@@ -36,7 +36,7 @@ export default function CostcoHome() {
               <div className="p-3">
                 <div className="text-sm font-bold leading-snug">{p.zh_name || p.jp_name}</div>
                 <div className="mt-1 text-sm font-extrabold text-brand">
-                  NT${Math.round(p.taiwan_suggested_price || p.jp_price || 0)}
+                  ¥{Math.round(p.jp_price || 0).toLocaleString()}
                 </div>
                 {p.is_hot_buy ? <span className="mt-1 inline-block rounded bg-brand px-1.5 py-0.5 text-xs text-white">Hot Buy</span> : null}
               </div>
