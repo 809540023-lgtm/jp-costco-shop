@@ -10,7 +10,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npm run seed:published && npm start
     envVars:
       - key: NODE_VERSION
         value: 22
