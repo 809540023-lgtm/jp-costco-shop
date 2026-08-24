@@ -22,8 +22,6 @@ services:
         value: "1"
       - key: CRON_SECRET
         sync: false
-      - key: DEBUG_SECRET
-        value: "zWwKZR-XXmy1hSKjF2Pcbg"
       - key: ADMIN_PASSWORD
         sync: false
 
