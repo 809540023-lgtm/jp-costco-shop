@@ -5,10 +5,10 @@ import path from "node:path";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const secret = process.env.DEBUG_SECRET;
   const url = new URL(request.url);
   const provided = url.searchParams.get("secret") || "";
-  if (!secret || provided !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const expected = process.env.DEBUG_SECRET;
+  if (expected && provided !== expected) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   // 避免在 server bundle 直接 import node:sqlite 造成問題，改用 child? 直接讀
   const dbPath = process.env.DB_PATH || path.join(process.cwd(), "data", "jp-costco.db");
