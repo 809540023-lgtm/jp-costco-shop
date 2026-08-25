@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminOrders() {
   await requireAdmin();
-  const orders = listOrders();
+  const orders = await listOrders();
+  const fulls = await Promise.all(orders.map((o) => getOrder(o.id)));
 
   return (
     <div>
@@ -16,10 +17,9 @@ export default async function AdminOrders() {
 
       <div className="mt-4 space-y-3">
         {orders.length === 0 ? <p className="text-gray-500">尚無訂單。</p> : null}
-        {orders.map((o) => {
-          const full = getOrder(o.id);
-          return (
-            <div key={o.id} className="rounded-2xl border border-gray-200 bg-white p-4">
+        {orders.map((o, idx) => {
+          const full = fulls[idx];
+          return (            <div key={o.id} className="rounded-2xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between">
                 <span className="font-extrabold">{o.order_number}</span>
                 <span className="text-sm text-gray-500">{o.status}</span>

@@ -2,8 +2,8 @@ import { getPublishedProducts } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
-export default function CostcoHome() {
-  const products = getPublishedProducts();
+export default async function CostcoHome() {
+  const products = await getPublishedProducts();
   const latest = products[0]?.updated_at || null;
 
   return (

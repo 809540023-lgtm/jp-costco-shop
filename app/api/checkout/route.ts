@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       const first = parsed.error.errors[0]?.message || "輸入資料有誤";
       return NextResponse.json({ error: first }, { status: 400 });
     }
-    const order = createOrder(parsed.data);
+    const order = await createOrder(parsed.data);
     return NextResponse.json({ orderId: order.orderId, orderNumber: order.orderNumber }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message || "伺服器錯誤" }, { status: 500 });

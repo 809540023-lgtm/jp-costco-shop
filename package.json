@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node scripts/seed-published.js && next start",
+    "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
     "db:init": "node scripts/init-db.js",
@@ -16,6 +16,7 @@
     "seed": "node scripts/seed.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "hls.js": "^1.7.1",
     "next": "^15.1.0",
     "react": "^19.0.0",

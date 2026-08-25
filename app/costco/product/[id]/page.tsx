@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import AddToCart from "./add-to-cart";
 
@@ -11,7 +11,7 @@ function safeHtml(html: string): string {
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = db.prepare("SELECT * FROM products WHERE id = ? AND status='published'").get(id) as any;
+  const { data: product } = await supabase.from("products").select("*").eq("id", id).eq("status", "published").maybeSingle();
   if (!product) notFound();
 
   const price = product.taiwan_suggested_price || 0;
@@ -19,9 +19,11 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     if (!product.features) return [];
     try { return JSON.parse(product.features); } catch { return []; }
   })();
-  const comparePrices = db.prepare(
-    "SELECT source, source_name, price, currency, captured_at FROM comparison_prices WHERE product_id = ? ORDER BY captured_at DESC"
-  ).all(product.id) as any[];
+  const { data: comparePrices } = await supabase
+    .from("comparison_prices")
+    .select("source, source_name, price, currency, captured_at")
+    .eq("product_id", product.id)
+    .order("captured_at", { ascending: false });
 
   function fmtCurrency(currency: string, value: number): string {
     if (currency === "TWD") return `NT$${Math.round(value).toLocaleString()}`;
@@ -88,12 +90,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             </div>
           ) : null}
 
-          {comparePrices.length ? (
+          {(comparePrices || []).length ? (
             <div className="mt-6">
               <h2 className="text-base font-extrabold">其他通路價格比較</h2>
               <p className="mt-1 text-xs text-gray-500">日本 Costco 價格 ¥{Math.round(product.jp_price || 0).toLocaleString()}。以下為其他通路參考價，供您比較。</p>
               <div className="mt-2 space-y-2">
-                {comparePrices.map((c, i) => (
+                {(comparePrices || []).map((c, i) => (
                   <div key={i} className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2">
                     <span className="text-sm font-medium">{c.source}</span>
                     <span className="text-sm font-bold">{fmtCurrency(c.currency, c.price)}</span>

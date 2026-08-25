@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
   try {
     const raw = await fetchCostcoJapan();
-    const { batchId, count } = runDailySearch(raw);
+    const { batchId, count } = await runDailySearch(raw);
     const summary = `搜尋批次 ${batchId} 完成，保留 ${count} 項日本特色商品。`;
     await notifyAdmin(summary);
     return NextResponse.json({ batchId, count, summary });

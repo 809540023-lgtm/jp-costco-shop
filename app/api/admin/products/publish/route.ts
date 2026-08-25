@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, audit } from "@/lib/db";
+import { supabase, audit } from "@/lib/supabase";
 import { isAdmin } from "@/lib/auth";
 
 export async function POST(request: Request) {
@@ -11,11 +11,11 @@ export async function POST(request: Request) {
 
   const date = new Date().toISOString().slice(0, 10);
   const collectionId = `${date}-costco-japan-top${ids.length}`;
-  db.prepare("INSERT INTO published_collections (id, title) VALUES (?,?)").run(collectionId, `日本 Costco 精選 ${date}`);
-  ids.forEach((id, i) => {
-    db.prepare("UPDATE products SET status='published', updated_at=datetime('now') WHERE id=?").run(id);
-    db.prepare("INSERT INTO published_collection_items (collection_id, product_id, rank) VALUES (?,?,?)").run(collectionId, id, i + 1);
-  });
-  audit("admin", "collection_published", "published_collection", collectionId, `count=${ids.length}`);
+  await supabase.from("published_collections").insert({ id: collectionId, title: `日本 Costco 精選 ${date}` });
+  for (let i = 0; i < ids.length; i++) {
+    await supabase.from("products").update({ status: "published", updated_at: new Date().toISOString() }).eq("id", ids[i]);
+    await supabase.from("published_collection_items").insert({ collection_id: collectionId, product_id: ids[i], rank: i + 1 });
+  }
+  await audit("admin", "collection_published", "published_collection", collectionId, `count=${ids.length}`);
   return NextResponse.json({ ok: true, collectionId });
 }

@@ -2,7 +2,7 @@
 // 依規格書：每天搜尋、保留歷史、分類證據來源、不把「官方頁面出現」寫成「實際銷量第一」。
 // 注意：日本 Costco 未公開全國實際銷量排行榜，排名為依官方熱門訊號、評論數、Hot Buy、新品與日本市場討論度推估。
 
-import { db, audit } from "./db";
+import { supabase, audit } from "./supabase";
 import { scoreProduct, shouldExclude, RankingInput } from "./ranking";
 
 export const DISCLAIMER =
@@ -63,15 +63,11 @@ function estimate(raw: RawProduct): RankingInput & {
 }
 
 // 建立每日搜尋批次並寫入待審核商品。
-export function runDailySearch(rawProducts: RawProduct[]): { batchId: string; count: number } {
+export async function runDailySearch(rawProducts: RawProduct[]): Promise<{ batchId: string; count: number }> {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
   const batchId = `sb-${date}-${now.toISOString().slice(11, 19).replace(/:/g, "")}`;
-  db.prepare("INSERT INTO search_batches (id, search_date, status, product_count) VALUES (?, ?, 'running', ?)").run(
-    batchId,
-    date,
-    rawProducts.length
-  );
+  await supabase.from("search_batches").insert({ id: batchId, search_date: date, status: "running", product_count: rawProducts.length });
 
   let kept = 0;
   for (const raw of rawProducts) {
@@ -79,44 +75,41 @@ export function runDailySearch(rawProducts: RawProduct[]): { batchId: string; co
     if (shouldExclude(input)) continue;
     const breakdown = scoreProduct(input);
     if (breakdown.total < 20) continue; // 過低分數不列入
-    db.prepare(
-      `INSERT INTO products (id, jp_name, brand, category, spec, jan_code, costco_url, image_url, jp_price,
-        is_hot_buy, is_new, rating, review_count, evidence_source, evidence_type, status, score, search_batch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,?)
-       ON CONFLICT(id) DO UPDATE SET
-         jp_name=excluded.jp_name, brand=excluded.brand, category=excluded.category, spec=excluded.spec,
-         jan_code=excluded.jan_code, costco_url=excluded.costco_url, image_url=excluded.image_url,
-         jp_price=excluded.jp_price, is_hot_buy=excluded.is_hot_buy, is_new=excluded.is_new,
-         rating=excluded.rating, review_count=excluded.review_count,
-         evidence_source=excluded.evidence_source, evidence_type=excluded.evidence_type,
-         score=excluded.score, search_batch_id=excluded.search_batch_id, updated_at=datetime('now')`
-    ).run(
-      raw.id, raw.jpName, raw.brand ?? null, raw.category ?? null, raw.spec ?? null, raw.janCode ?? null,
-      raw.costcoUrl ?? null, raw.imageUrl ?? null, raw.jpPrice ?? null,
-      raw.isHotBuy ? 1 : 0, raw.isNew ? 1 : 0, raw.rating ?? null, raw.reviewCount ?? 0,
-      raw.evidenceSource ?? null, raw.evidenceType ?? null, breakdown.total, batchId
-    );
-    db.prepare("INSERT INTO product_rankings (product_id, search_batch_id, score, score_breakdown) VALUES (?,?,?,?)")
-      .run(raw.id, batchId, breakdown.total, JSON.stringify(breakdown));
+    await supabase.from("products").upsert({
+      id: raw.id, jp_name: raw.jpName, brand: raw.brand ?? null, category: raw.category ?? null,
+      spec: raw.spec ?? null, jan_code: raw.janCode ?? null, costco_url: raw.costcoUrl ?? null,
+      image_url: raw.imageUrl ?? null, jp_price: raw.jpPrice ?? null,
+      is_hot_buy: raw.isHotBuy ?? false, is_new: raw.isNew ?? false, rating: raw.rating ?? null,
+      review_count: raw.reviewCount ?? 0, evidence_source: raw.evidenceSource ?? null,
+      evidence_type: raw.evidenceType ?? null, status: "pending_review", score: breakdown.total,
+      search_batch_id: batchId, updated_at: new Date().toISOString()
+    }, { onConflict: "id" });
+    await supabase.from("product_rankings").insert({
+      product_id: raw.id, search_batch_id: batchId, score: breakdown.total, score_breakdown: JSON.stringify(breakdown)
+    });
     kept += 1;
   }
 
-  db.prepare("UPDATE search_batches SET status='completed', summary=?, product_count=? WHERE id=?").run(
-    `保留 ${kept} 項日本特色商品。${DISCLAIMER}`, kept, batchId
-  );
-  audit("search-job", "search_batch_completed", "search_batch", batchId, `kept=${kept}`);
+  await supabase.from("search_batches").update({ status: "completed", summary: `保留 ${kept} 項日本特色商品。${DISCLAIMER}`, product_count: kept }).eq("id", batchId);
+  await audit("search-job", "search_batch_completed", "search_batch", batchId, `kept=${kept}`);
   return { batchId, count: kept };
 }
 
 // 從已發布集合讀取當前網站商品
-export function getPublishedProducts(collectionId?: string) {
+export async function getPublishedProducts(collectionId?: string): Promise<any[]> {
   if (collectionId) {
-    return db.prepare(
-      `SELECT p.* FROM products p
-       JOIN published_collection_items i ON i.product_id = p.id
-       JOIN published_collections c ON c.id = i.collection_id
-       WHERE c.id = ? ORDER BY i.rank ASC`
-    ).all(collectionId) as any[];
+    const { data } = await supabase
+      .from("published_collection_items")
+      .select("rank, products(*)")
+      .eq("collection_id", collectionId)
+      .order("rank", { ascending: true });
+    return (data || []).map((r: any) => r.products);
   }
-  return db.prepare("SELECT * FROM products WHERE status='published' ORDER BY score DESC, updated_at DESC").all() as any[];
+  const { data } = await supabase
+    .from("products")
+    .select("*")
+    .eq("status", "published")
+    .order("score", { ascending: false })
+    .order("updated_at", { ascending: false });
+  return data || [];
 }

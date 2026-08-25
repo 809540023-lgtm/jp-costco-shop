@@ -14,6 +14,6 @@ export async function POST(request: Request) {
   const id = String(body.id || "");
   const status = String(body.status || "");
   if (!id || !STATUSES.has(status)) return NextResponse.json({ error: "參數錯誤" }, { status: 400 });
-  updateOrderStatus(id, status as any);
+  await updateOrderStatus(id, status as any);
   return NextResponse.json({ ok: true });
 }

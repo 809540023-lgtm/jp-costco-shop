@@ -1,5 +1,5 @@
 // 訂單服務：建立訂單、保存下單當時價格、報關資料遮罩、狀態管理。
-import { db, audit } from "./db";
+import { supabase, audit } from "./supabase";
 import { CheckoutData } from "./validation";
 import { OrderStatus } from "./models";
 import { maskIdNumber, generateOrderNumber } from "./id-utils";
@@ -9,66 +9,60 @@ export const CUSTOMS_FEE = 0;
 
 export { maskIdNumber, generateOrderNumber };
 
-export function createOrder(data: CheckoutData): { orderId: string; orderNumber: string } {
+export async function createOrder(data: CheckoutData): Promise<{ orderId: string; orderNumber: string }> {
   const orderId = `ord-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const orderNumber = generateOrderNumber();
   const productTotal = data.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const total = productTotal + SHIPPING_FEE + CUSTOMS_FEE;
 
-  db.exec("BEGIN");
-  try {
-    db.prepare(
-      `INSERT INTO orders (id, order_number, status, product_total, shipping_fee, customs_fee, total_amount)
-       VALUES (?,?,?,?,?,?,?)`
-    ).run(orderId, orderNumber, "pending", productTotal, SHIPPING_FEE, CUSTOMS_FEE, total);
+  await supabase.from("orders").insert({
+    id: orderId, order_number: orderNumber, status: "pending",
+    product_total: productTotal, shipping_fee: SHIPPING_FEE, customs_fee: CUSTOMS_FEE, total_amount: total
+  });
 
-    for (const item of data.items) {
-      db.prepare(
-        `INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, subtotal, image_url)
-         VALUES (?,?,?,?,?,?,?)`
-      ).run(orderId, item.productId, item.name, item.unitPrice, item.quantity, item.unitPrice * item.quantity, item.imageUrl || null);
-    }
-
-    db.prepare(
-      `INSERT INTO customer_profiles (order_id, name, phone, email, address, postal_code, delivery_method, note)
-       VALUES (?,?,?,?,?,?,?,?)`
-    ).run(orderId, data.customer.name, data.customer.phone, data.customer.email || null,
-      data.customer.address, data.customer.postalCode || null, data.customer.deliveryMethod || null, data.customer.note || null);
-
-    db.prepare(
-      `INSERT INTO customs_profiles (order_id, zh_name, id_number, phone, email, ezway_phone, consent)
-       VALUES (?,?,?,?,?,?,?)`
-    ).run(orderId, data.customs.zhName, data.customs.idNumber, data.customs.phone,
-      data.customs.email || null, data.customs.ezwayPhone || null, data.customs.consent ? 1 : 0);
-
-    db.prepare("INSERT INTO notifications (type, title, body) VALUES ('new_order', ?, ?)")
-      .run(`新訂單 ${orderNumber}`, `收到新訂單，共 ${data.items.length} 件商品，總額 NT$${total.toFixed(0)}`);
-    db.exec("COMMIT");
-  } catch (e) {
-    db.exec("ROLLBACK");
-    throw e;
+  for (const item of data.items) {
+    await supabase.from("order_items").insert({
+      order_id: orderId, product_id: item.productId, product_name: item.name,
+      unit_price: item.unitPrice, quantity: item.quantity, subtotal: item.unitPrice * item.quantity,
+      image_url: item.imageUrl || null
+    });
   }
 
-  audit("customer", "order_created", "order", orderId, orderNumber);
+  await supabase.from("customer_profiles").insert({
+    order_id: orderId, name: data.customer.name, phone: data.customer.phone, email: data.customer.email || null,
+    address: data.customer.address, postal_code: data.customer.postalCode || null,
+    delivery_method: data.customer.deliveryMethod || null, note: data.customer.note || null
+  });
+
+  await supabase.from("customs_profiles").insert({
+    order_id: orderId, zh_name: data.customs.zhName, id_number: data.customs.idNumber, phone: data.customs.phone,
+    email: data.customs.email || null, ezway_phone: data.customs.ezwayPhone || null, consent: data.customs.consent
+  });
+
+  await supabase.from("notifications").insert({
+    type: "new_order", title: `新訂單 ${orderNumber}`, body: `收到新訂單，共 ${data.items.length} 件商品，總額 NT$${total.toFixed(0)}`
+  });
+
+  await audit("customer", "order_created", "order", orderId, orderNumber);
   return { orderId, orderNumber };
 }
 
-export function getOrder(orderId: string) {
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as any;
+export async function getOrder(orderId: string): Promise<any | null> {
+  const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
   if (!order) return null;
-  const items = db.prepare("SELECT * FROM order_items WHERE order_id = ?").all(orderId) as any[];
-  const customer = db.prepare("SELECT * FROM customer_profiles WHERE order_id = ?").get(orderId) as any;
-  const customs = db.prepare("SELECT * FROM customs_profiles WHERE order_id = ?").get(orderId) as any;
-  return { ...order, items, customer, customs };
+  const { data: items } = await supabase.from("order_items").select("*").eq("order_id", orderId);
+  const { data: customer } = await supabase.from("customer_profiles").select("*").eq("order_id", orderId).maybeSingle();
+  const { data: customs } = await supabase.from("customs_profiles").select("*").eq("order_id", orderId).maybeSingle();
+  return { ...order, items: items || [], customer, customs };
 }
 
-export function listOrders() {
-  return db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all() as any[];
+export async function listOrders(): Promise<any[]> {
+  const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+  return data || [];
 }
 
-export function updateOrderStatus(orderId: string, status: OrderStatus, actor = "admin") {
-  db.prepare("UPDATE orders SET status=?, updated_at=datetime('now') WHERE id=?").run(status, orderId);
-  audit(actor, "order_status_changed", "order", orderId, status);
-  db.prepare("INSERT INTO notifications (type, title, body) VALUES ('status_change', ?, ?)")
-    .run(`訂單狀態更新`, `訂單狀態已更新為 ${status}`);
+export async function updateOrderStatus(orderId: string, status: OrderStatus, actor = "admin") {
+  await supabase.from("orders").update({ status, updated_at: new Date().toISOString() }).eq("id", orderId);
+  await audit(actor, "order_status_changed", "order", orderId, status);
+  await supabase.from("notifications").insert({ type: "status_change", title: "訂單狀態更新", body: `訂單狀態已更新為 ${status}` });
 }

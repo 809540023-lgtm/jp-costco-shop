@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 // 未設定時使用示範串流。
 const DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
 
-export default function LivePage() {
+export default async function LivePage() {
   const src = process.env.LIVE_STREAM_URL || DEMO_STREAM;
-  const weeklyProducts = getPublishedProducts().slice(0, 12);
+  const weeklyProducts = (await getPublishedProducts()).slice(0, 12);
   return (
     <div>
       <a href="/costco" className="text-sm text-gray-500">← 返回商品總覽</a>

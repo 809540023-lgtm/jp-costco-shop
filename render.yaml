@@ -10,12 +10,18 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm run seed:published && npm start
+    startCommand: npm start
     envVars:
       - key: NODE_VERSION
         value: 22
       - key: SITE_URL
         value: https://jp-costco-shop.onrender.com
+      - key: SUPABASE_URL
+        value: https://ielurceqyovpsnfwtbek.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: LIVE_STREAM_URL
         sync: false
       - key: LINE_PHASE
