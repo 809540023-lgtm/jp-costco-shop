@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 export interface WeeklyStoreDealRow {
   id: string;
@@ -18,23 +18,42 @@ export interface WeeklyStoreDealRow {
   status: string;
 }
 
-export function getPublishedWeeklyDeals(): WeeklyStoreDealRow[] {
-  return db.prepare(`
-    SELECT id, costco_item_number, product_name_ja, product_name_zh,
+export async function getPublishedWeeklyDeals(): Promise<WeeklyStoreDealRow[]> {
+  const { data, error } = await supabase
+    .from("weekly_store_deals")
+    .select(`id, costco_item_number, product_name_ja, product_name_zh,
       primary_photo_url, price_tag_photo_url, regular_price_jpy,
       sale_price_jpy, discount_jpy, package_quantity, package_unit,
-      unit_price_label, sale_end_date, verification_status, status
-    FROM weekly_store_deals
-    WHERE status = 'published' AND verification_status = 'VERIFIED'
-    ORDER BY COALESCE(published_at, created_at) DESC
-  `).all() as unknown as WeeklyStoreDealRow[];
+      unit_price_label, sale_end_date, verification_status, status`)
+    .eq("status", "published")
+    .eq("verification_status", "VERIFIED")
+    .order("published_at", { ascending: false });
+  if (error) throw new Error(`現場商品讀取失敗：${error.message}`);
+  return (data || []) as WeeklyStoreDealRow[];
 }
 
-export function getPhotoQueueSummary() {
-  const total = db.prepare("SELECT COUNT(*) AS n FROM costco_photo_processing_queue").get() as { n: number };
-  const groups = db.prepare(`
-    SELECT vision_status AS status, COUNT(*) AS n
-    FROM costco_photo_processing_queue GROUP BY vision_status ORDER BY vision_status
-  `).all() as unknown as Array<{ status: string; n: number }>;
-  return { total: total.n, groups };
+export async function getPhotoQueueSummary() {
+  const { data, error, count } = await supabase
+    .from("costco_photo_processing_queue")
+    .select("vision_status,mime_type", { count: "exact" });
+  if (error) throw new Error(`相片 Queue 統計失敗：${error.message}`);
+
+  const grouped = new Map<string, number>();
+  let imageTotal = 0;
+  let videoTotal = 0;
+  for (const row of data || []) {
+    const status = row.vision_status || "UNKNOWN";
+    grouped.set(status, (grouped.get(status) || 0) + 1);
+    if (row.mime_type?.startsWith("image/")) imageTotal += 1;
+    if (row.mime_type?.startsWith("video/")) videoTotal += 1;
+  }
+
+  return {
+    total: count || 0,
+    groups: Array.from(grouped, ([status, n]) => ({ status, n })).sort((a, b) =>
+      a.status.localeCompare(b.status)
+    ),
+    imageTotal,
+    videoTotal
+  };
 }

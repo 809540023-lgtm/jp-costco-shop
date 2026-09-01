@@ -204,6 +204,8 @@ create table if not exists public.costco_photo_processing_queue (
 create index if not exists idx_photo_queue_status
   on public.costco_photo_processing_queue(vision_status, pairing_status);
 
+alter table public.costco_photo_processing_queue enable row level security;
+
 create table if not exists public.weekly_store_deals (
   id text primary key,
   product_id text references public.products(id),

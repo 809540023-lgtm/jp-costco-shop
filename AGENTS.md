@@ -11,6 +11,8 @@
 - 每日搜尋失敗時，網站繼續顯示上一期已發布商品。
 - 日本特色商品不足 50 項時，不使用全球商品硬湊。
 - Google Drive 現場照片以 `drive_file_id` 為唯一鍵；不可只掃前 100 張。
+- Drive 清冊與檔案連結只能寫入私人 Supabase Queue，不可提交到公開 GitHub。
+- HEIC 與 MOV 都必須進 Queue；MOV 後續抽取 Key Frames，不可排除。
 - 舊 AI 辨識是 Candidate Data，回看原圖確認後才能標記 `VERIFIED`。
 - 單一價格不是特價證據；需有 OFF／値引／期限等明確促銷文字。
 

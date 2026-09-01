@@ -60,6 +60,8 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 | `CRON_SECRET` | 每日搜尋 cron 的保護密鑰 |
 | `SUPABASE_ACCESS_TOKEN` | Supabase 管理 API 個人權杖 |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 持久化資料庫（尚未啟用） |
+| `GOOGLE_DRIVE_API_KEY` | 後台完整掃描公開共享 Costco Drive 資料夾；只放部署環境，不提交 GitHub |
+| `COSTCO_DRIVE_FOLDER_ID` | Costco 現場照片資料夾 ID |
 | `LIVE_STREAM_URL` | 直播串流網址（`.m3u8` 或 `.mp4`；未設定時用示範串流） |
 
 ## 後台權限控管
@@ -77,3 +79,7 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 ## Costco 現場照片管線
 
 現場照片固定由 [Google Drive 資料夾](https://drive.google.com/drive/folders/1_Ryc7z4Et-M5lRA0q96gIUfYPDX8TelB) 匯入，使用 Drive File ID 去重。完整規則與 2026-09-01 實際盤點請見 [`docs/COSTCO_ONSITE_HANDOVER.md`](docs/COSTCO_ONSITE_HANDOVER.md)。
+
+- 2026-09-01 已驗證 Drive 共有 150 個檔案（149 張 HEIC 相片、1 支 MOV 影片）。
+- 後台 `/admin/onsite` 的 Drive Sync 使用完整 pagination，將 HEIC 與 MOV 全部寫入私人 Supabase Queue。
+- MOV 後續抽取 Key Frames；Drive File ID 與檔案連結不提交到公開 GitHub。

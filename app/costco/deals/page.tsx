@@ -6,8 +6,8 @@ function yen(value: number | null) {
   return value == null ? null : `¥${Math.round(value).toLocaleString("ja-JP")}`;
 }
 
-export default function OnsiteDealsPage() {
-  const deals = getPublishedWeeklyDeals();
+export default async function OnsiteDealsPage() {
+  const deals = await getPublishedWeeklyDeals();
 
   return (
     <div>
