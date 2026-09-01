@@ -21,11 +21,13 @@ npm run dev       # 啟動開發伺服器
 |------|------|
 | `/costco` | 本期日本 Costco 精選商品總覽 |
 | `/costco/live` | 美洲區好市多 · 每週商品直播（含一鍵截圖儲存） |
+| `/costco/deals` | 日本 Costco 現場商品／特價（人工確認後發布） |
 | `/costco/product/[id]` | 單一商品介紹頁 |
 | `/costco/cart` | 購物車（localStorage） |
 | `/costco/checkout` | 結帳與報關資料表單 |
 | `/costco/success` | 訂單完成頁 |
 | `/admin` | 後台（商品審核/發布、訂單管理、搜尋批次） |
+| `/admin/onsite` | 現場照片 Queue、Vision、配對與審核入口 |
 
 ## 每日搜尋
 ```bash
@@ -71,3 +73,7 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 - 搜尋失敗時回傳 500 並保留上一期已發布商品。
 
 > 本系統僅供研究與開發，實際報關請依現行法規與報關業者要求執行。
+
+## Costco 現場照片管線
+
+現場照片固定由 [Google Drive 資料夾](https://drive.google.com/drive/folders/1_Ryc7z4Et-M5lRA0q96gIUfYPDX8TelB) 匯入，使用 Drive File ID 去重。完整規則與 2026-09-01 實際盤點請見 [`docs/COSTCO_ONSITE_HANDOVER.md`](docs/COSTCO_ONSITE_HANDOVER.md)。

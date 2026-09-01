@@ -189,3 +189,85 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   detail TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Costco 現場照片處理佇列（Drive 檔案 ID 是唯一識別，不以檔名判斷）
+CREATE TABLE IF NOT EXISTS costco_photo_processing_queue (
+  id TEXT PRIMARY KEY,
+  drive_file_id TEXT NOT NULL UNIQUE,
+  drive_folder_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  file_size INTEGER,
+  captured_at TEXT,
+  drive_modified_at TEXT,
+  download_status TEXT DEFAULT 'PENDING',
+  conversion_status TEXT DEFAULT 'PENDING',
+  vision_status TEXT DEFAULT 'PENDING',
+  pairing_status TEXT DEFAULT 'PENDING',
+  product_id TEXT,
+  deal_id TEXT,
+  confidence REAL,
+  error_message TEXT,
+  retry_count INTEGER DEFAULT 0,
+  processed_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_queue_status
+  ON costco_photo_processing_queue(vision_status, pairing_status);
+
+-- 每週 Costco 現場商品／特價。只有明確促銷證據才能填 sale 欄位。
+CREATE TABLE IF NOT EXISTS weekly_store_deals (
+  id TEXT PRIMARY KEY,
+  product_id TEXT,
+  costco_item_number TEXT,
+  store_name TEXT,
+  store_location TEXT,
+  product_name_ja TEXT NOT NULL,
+  product_name_zh TEXT,
+  primary_photo_url TEXT,
+  price_tag_photo_url TEXT,
+  regular_price_jpy REAL,
+  sale_price_jpy REAL,
+  discount_jpy REAL,
+  package_quantity REAL,
+  package_unit TEXT,
+  net_weight TEXT,
+  unit_price REAL,
+  unit_price_label TEXT,
+  sale_start_date TEXT,
+  sale_end_date TEXT,
+  captured_at TEXT,
+  captured_by TEXT,
+  ai_description TEXT,
+  ai_confidence REAL,
+  verification_status TEXT DEFAULT 'UNVERIFIED',
+  status TEXT DEFAULT 'draft',
+  published_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE TABLE IF NOT EXISTS costco_price_observations (
+  id TEXT PRIMARY KEY,
+  product_id TEXT,
+  deal_id TEXT,
+  photo_id TEXT NOT NULL,
+  store_name TEXT,
+  store_location TEXT,
+  observed_price REAL,
+  regular_price REAL,
+  discount_amount REAL,
+  sale_start_date TEXT,
+  sale_end_date TEXT,
+  observed_at TEXT,
+  confidence REAL,
+  verified INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  FOREIGN KEY (deal_id) REFERENCES weekly_store_deals(id),
+  FOREIGN KEY (photo_id) REFERENCES costco_photo_processing_queue(id)
+);

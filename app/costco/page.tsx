@@ -12,6 +12,7 @@ export default async function CostcoHome() {
       <p className="mt-1 text-sm text-gray-500">
         {latest ? `本期更新：${latest.slice(0, 10)}` : "尚無已發布商品"}
       </p>
+      <a href="/costco/deals" className="mt-4 block rounded-2xl bg-red-600 p-4 text-center font-extrabold text-white shadow-sm">🔥 查看本週 Costco 現場商品</a>
 
       {products.length === 0 ? (
         <div className="mt-10 rounded-2xl border border-dashed border-gray-300 p-10 text-center text-gray-500">

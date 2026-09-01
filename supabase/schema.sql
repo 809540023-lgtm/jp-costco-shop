@@ -178,6 +178,81 @@ create table if not exists public.audit_logs (
   created_at timestamptz default now()
 );
 
+create table if not exists public.costco_photo_processing_queue (
+  id text primary key,
+  drive_file_id text not null unique,
+  drive_folder_id text not null,
+  file_name text not null,
+  mime_type text not null,
+  file_size bigint,
+  captured_at timestamptz,
+  drive_modified_at timestamptz,
+  download_status text default 'PENDING',
+  conversion_status text default 'PENDING',
+  vision_status text default 'PENDING',
+  pairing_status text default 'PENDING',
+  product_id text references public.products(id),
+  deal_id text,
+  confidence numeric,
+  error_message text,
+  retry_count integer default 0,
+  processed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists idx_photo_queue_status
+  on public.costco_photo_processing_queue(vision_status, pairing_status);
+
+create table if not exists public.weekly_store_deals (
+  id text primary key,
+  product_id text references public.products(id),
+  costco_item_number text,
+  store_name text,
+  store_location text,
+  product_name_ja text not null,
+  product_name_zh text,
+  primary_photo_url text,
+  price_tag_photo_url text,
+  regular_price_jpy numeric,
+  sale_price_jpy numeric,
+  discount_jpy numeric,
+  package_quantity numeric,
+  package_unit text,
+  net_weight text,
+  unit_price numeric,
+  unit_price_label text,
+  sale_start_date date,
+  sale_end_date date,
+  captured_at timestamptz,
+  captured_by text,
+  ai_description text,
+  ai_confidence numeric,
+  verification_status text default 'UNVERIFIED',
+  status text default 'draft',
+  published_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.costco_price_observations (
+  id text primary key,
+  product_id text references public.products(id),
+  deal_id text references public.weekly_store_deals(id),
+  photo_id text not null references public.costco_photo_processing_queue(id),
+  store_name text,
+  store_location text,
+  observed_price numeric,
+  regular_price numeric,
+  discount_amount numeric,
+  sale_start_date date,
+  sale_end_date date,
+  observed_at timestamptz,
+  confidence numeric,
+  verified boolean default false,
+  created_at timestamptz default now()
+);
+
 -- 讓 anon 可讀取已發布商品與比較價格（購物網站前台不需登入）
 alter table public.products enable row level security;
 alter table public.comparison_prices enable row level security;
