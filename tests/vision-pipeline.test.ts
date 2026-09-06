@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseVisionResult, applySaleEvidenceRule, VisionResult } from "../lib/vision/vision-client";
 import { scorePairing, pairCandidates, PairCandidate, PAIRING_MIN_SCORE } from "../lib/vision/pairing";
+import { mergePairingToDeal, dealIdFor, DealPhotoContext } from "../lib/vision/deals";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 60000).toISOString();
 
@@ -81,5 +82,67 @@ describe("商品／價牌配對", () => {
     const map = new Map(proposals.map((x) => [x.productPhotoId, x.priceTagPhotoId]));
     expect(map.get("p1")).toBe("t1");
     expect(map.get("p2")).toBe("t2");
+  });
+});
+
+const dctx = (over: Partial<DealPhotoContext>): DealPhotoContext => ({
+  photoId: "drive-abc", fileName: "S__1.jpg", capturedAt: "2026-09-01T10:00:00Z",
+  storageRef: "costco-onsite-media/onsite/S__1.jpg", productId: null, candidate: null,
+  ...over
+});
+
+describe("配對 → weekly_store_deals 特價草稿", () => {
+  it("有促銷文字證據 → 保留特價欄位並計算折扣與單價", () => {
+    const product = dctx({
+      photoId: "drive-p1", fileName: "S__1.jpg",
+      candidate: { product_name: "Happy Turn 仙貝", costco_item_number: "123456", package_quantity: 5, package_unit: "袋", confidence: 0.9 }
+    });
+    const tag = dctx({
+      photoId: "drive-t1", fileName: "S__2.jpg", storageRef: "costco-onsite-media/onsite/S__2.jpg",
+      candidate: {
+        observed_price_jpy: 699, regular_price_jpy: 799, sale_price_jpy: 699,
+        sale_evidence: "通常価格 799円 → 値引", sale_end_date: "2026-09-14", confidence: 0.8
+      }
+    });
+    const deal = mergePairingToDeal(product, tag);
+    expect(deal.id).toBe(dealIdFor("drive-p1"));
+    expect(deal.status).toBe("draft");
+    expect(deal.verification_status).toBe("UNVERIFIED");
+    expect(deal.sale_price_jpy).toBe(699);
+    expect(deal.regular_price_jpy).toBe(799);
+    expect(deal.discount_jpy).toBe(100);
+    expect(deal.unit_price).toBe(139.8);
+    expect(deal.unit_price_label).toBe("約 ¥140/袋");
+    expect(deal.sale_end_date).toBe("2026-09-14");
+    expect(deal.product_name_ja).toBe("Happy Turn 仙貝");
+    expect(deal.costco_item_number).toBe("123456");
+    expect(deal.primary_photo_url).toBe("costco-onsite-media/onsite/S__1.jpg");
+    expect(deal.price_tag_photo_url).toBe("costco-onsite-media/onsite/S__2.jpg");
+    expect(deal.ai_confidence).toBe(0.8); // 兩者取較低值
+  });
+  it("單一價格無促銷文字 → 特價欄位清空，只記錄現場價格", () => {
+    const product = dctx({ candidate: { product_name: "A商品" } });
+    const tag = dctx({ candidate: { observed_price_jpy: 599 } });
+    const deal = mergePairingToDeal(product, tag);
+    expect(deal.sale_price_jpy).toBeNull();
+    expect(deal.discount_jpy).toBeNull();
+    expect(deal.sale_end_date).toBeNull();
+    expect(deal.regular_price_jpy).toBe(599);
+  });
+  it("無價牌照 → 價格退回商品照候選，價牌網址為空", () => {
+    const product = dctx({
+      photoId: "drive-p2",
+      candidate: { product_name: "大福", observed_price_jpy: 799, regular_price_jpy: 899, sale_price_jpy: 799, sale_evidence: "OFF" }
+    });
+    const deal = mergePairingToDeal(product, null);
+    expect(deal.price_tag_photo_url).toBeNull();
+    expect(deal.sale_price_jpy).toBe(799);
+    expect(deal.regular_price_jpy).toBe(899);
+    expect(deal.discount_jpy).toBe(100);
+  });
+  it("候選缺商品名 → 退回檔名（去副檔名）", () => {
+    const product = dctx({ fileName: "IMG_3461.HEIC", candidate: null });
+    const deal = mergePairingToDeal(product, null);
+    expect(deal.product_name_ja).toBe("IMG_3461");
   });
 });

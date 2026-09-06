@@ -3,6 +3,7 @@ import { getPhotoQueueSummary } from "@/lib/onsite-deals";
 import DriveSyncButton from "@/components/admin/DriveSyncButton";
 import MediaProcessButton from "@/components/admin/MediaProcessButton";
 import VisionRunButton from "@/components/admin/VisionRunButton";
+import DealsBuildButton from "@/components/admin/DealsBuildButton";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,11 @@ export default async function OnsiteAdminPage() {
   return (
     <div>
       <h1 className="text-2xl font-extrabold">📷 Costco 現場商品</h1>
-      <p className="mt-1 text-sm text-gray-500">Drive 同步、照片處理、Vision 辨識、商品與價牌配對的管理入口。</p>
+      <p className="mt-1 text-sm text-gray-500">Drive 同步、照片處理、Vision 辨識、商品與價牌配對、特價草稿的管理入口。</p>
       <DriveSyncButton />
       <MediaProcessButton />
       <VisionRunButton />
+      <DealsBuildButton />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border bg-white p-5">
           <div className="text-sm text-gray-500">Queue 全部檔案</div>

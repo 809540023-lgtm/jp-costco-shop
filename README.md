@@ -22,6 +22,7 @@
 | Agent 6 訂單與採購 | `lib/graph/procurement.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理 |
 | 👁️ Vision 辨識 | `lib/vision/vision-client.ts`、`lib/vision/pipeline.ts` | 現場照片/價牌 → 結構化候選（costco_vision_candidates）；單一價格非特價證據；情境照標記 CONTEXT_ONLY；無金鑰時自動跳過 |
 | 🔗 商品/價牌配對 | `lib/vision/pairing.ts` | Item Number/JAN 強證據＋品牌/名稱/規格/時間綜合評分；檔名僅微弱加分（不可只靠檔名連號）；產出 NEEDS_REVIEW 候選 |
+| 🏷️ 特價草稿（配對 → weekly_store_deals） | `lib/vision/deals.ts` | 僅處理人工 VERIFIED 的配對；無促銷文字證據時清空特價欄位（單一價格非特價）；產出一律 draft／UNVERIFIED，人工補中文譯名後發布 |
 | 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot |
 | 直播訊號匯入 | `scripts/import-livestream-signal.js` | 競業直播帶貨清單（如 `~/costco-analysis/products_part*.md`）寫入 Graph；清冊不提交 GitHub |
 | Dashboard | `/admin` 首頁 | `v_dashboard_funnel` 今日漏斗 + 待採購件數 |
@@ -47,7 +48,7 @@ npm run dev       # 啟動開發伺服器
 | `/costco/checkout` | 結帳與報關資料表單 |
 | `/costco/success` | 訂單完成頁 |
 | `/admin` | 後台（商品審核/發布、訂單管理、搜尋批次） |
-| `/admin/onsite` | 現場照片 Queue、Vision、配對與審核入口 |
+| `/admin/onsite` | 現場照片 Queue、Vision、配對、特價草稿與審核入口 |
 
 ## 每日搜尋
 ```bash
@@ -110,5 +111,6 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 - 2026-09-01 已驗證 Drive 共有 150 個檔案（149 張 HEIC 相片、1 支 MOV 影片）。
 - 後台 `/admin/onsite` 的 Drive Sync 使用完整 pagination，將 HEIC 與 MOV 全部寫入私人 Supabase Queue。
 - 後台分批處理 HEIC（轉 JPEG）與 MOV（最多擷取 6 張 Key Frames）；衍生檔只存於私有 Supabase Storage。
+- Vision 辨識 → 商品/價牌配對後，人工將配對標記 `VERIFIED`，再由後台「已確認配對 → 產生特價草稿」批次寫入 `weekly_store_deals`（`id=onsite-<商品照ID>`，draft／UNVERIFIED）。照片以私有 bucket 路徑儲存，前台 `/costco/deals` 讀取時轉 signed URL；人工發布前需補中文譯名。
 - 部署前須套用兩個 `20260901` migration，並設定 `SUPABASE_SERVICE_ROLE_KEY` 與 `GOOGLE_DRIVE_API_KEY`（或 `GOOGLE_DRIVE_ACCESS_TOKEN`）。
 - Drive File ID、原始檔案連結與處理清冊不提交到公開 GitHub。

@@ -1,4 +1,15 @@
 import { supabase } from "@/lib/supabase";
+import { MEDIA_BUCKET } from "@/lib/vision/deals";
+
+// 私有 bucket 參照（"<bucket>/<path>"）轉 signed URL；已是 http(s) 的網址直接回傳
+export async function resolvePhotoUrl(url: string | null, ttlSeconds = 600): Promise<string | null> {
+  if (!url) return null;
+  if (/^https?:\/\//.test(url)) return url;
+  const prefix = `${MEDIA_BUCKET}/`;
+  const path = url.startsWith(prefix) ? url.slice(prefix.length) : url;
+  const { data } = await supabase.storage.from(MEDIA_BUCKET).createSignedUrl(path, ttlSeconds);
+  return data?.signedUrl ?? null;
+}
 
 export interface WeeklyStoreDealRow {
   id: string;
@@ -29,7 +40,12 @@ export async function getPublishedWeeklyDeals(): Promise<WeeklyStoreDealRow[]> {
     .eq("verification_status", "VERIFIED")
     .order("published_at", { ascending: false });
   if (error) throw new Error(`現場商品讀取失敗：${error.message}`);
-  return (data || []) as WeeklyStoreDealRow[];
+  const rows = (data || []) as WeeklyStoreDealRow[];
+  return Promise.all(rows.map(async (row) => ({
+    ...row,
+    primary_photo_url: await resolvePhotoUrl(row.primary_photo_url),
+    price_tag_photo_url: await resolvePhotoUrl(row.price_tag_photo_url)
+  })));
 }
 
 export async function getPhotoQueueSummary() {
