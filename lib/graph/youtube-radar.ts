@@ -2,6 +2,9 @@
 // 無 YOUTUBE_API_KEY 時優雅跳過，不阻塞主流程（SPEC 14.1：降級不阻塞）。
 import { supabase } from "@/lib/supabase";
 import { callLlm } from "./llm";
+import { CommentItem } from "./intent-ingest";
+
+export type { CommentItem } from "./intent-ingest";
 
 const API_BASE = "https://www.googleapis.com/youtube/v3";
 
@@ -100,12 +103,13 @@ export interface RadarIngestResult {
   listingsCreated: number;
   mentionsCreated: number;
   entitiesMatched: number;
+  matchedListings: Array<{ listingId: string; videoId: string; productId: string }>;
 }
 
 // 將雷達結果寫入 Graph：source_listing + reseller_mention。
 // 影片標題視為「該代購推廣了標題中的商品」；無法配對的商品實體先留 listing，待 Astra 批次比對。
 export async function ingestRadarVideos(videos: RadarVideo[]): Promise<RadarIngestResult> {
-  const result: RadarIngestResult = { videosFetched: videos.length, listingsCreated: 0, mentionsCreated: 0, entitiesMatched: 0 };
+  const result: RadarIngestResult = { videosFetched: videos.length, listingsCreated: 0, mentionsCreated: 0, entitiesMatched: 0, matchedListings: [] };
   for (const v of videos) {
     const dedupHash = `youtube:${v.videoId}`;
     const { data: existing } = await supabase
@@ -137,6 +141,7 @@ export async function ingestRadarVideos(videos: RadarVideo[]): Promise<RadarInge
 
     if (entityId) {
       result.entitiesMatched += 1;
+      result.matchedListings.push({ listingId: listing.id, videoId: v.videoId, productId: entityId });
       const { data: prior } = await supabase
         .from("reseller_mention")
         .select("id")
@@ -156,6 +161,46 @@ export async function ingestRadarVideos(videos: RadarVideo[]): Promise<RadarInge
     }
   }
   return result;
+}
+
+// 抓影片留言內容（commentThreads，每影片最多 100 則），供 Agent 2 規則分類。
+export async function fetchVideoComments(videoId: string): Promise<CommentItem[]> {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) return [];
+  try {
+    const url = new URL(`${API_BASE}/commentThreads`);
+    url.searchParams.set("key", key);
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("videoId", videoId);
+    url.searchParams.set("order", "relevance");
+    url.searchParams.set("maxResults", "100");
+    url.searchParams.set("textFormat", "plainText");
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const payload = (await res.json()) as {
+      items?: Array<{
+        id?: string;
+        snippet?: {
+          topLevelComment?: {
+            id?: string;
+            snippet?: { textDisplay?: string; textOriginal?: string; authorDisplayName?: string; publishedAt?: string; likeCount?: number };
+          };
+        };
+      }>;
+    };
+    return (payload.items || [])
+      .map((i) => ({
+        commentId: i.id || i.snippet?.topLevelComment?.id || "",
+        videoId,
+        text: i.snippet?.topLevelComment?.snippet?.textOriginal || i.snippet?.topLevelComment?.snippet?.textDisplay || "",
+        author: i.snippet?.topLevelComment?.snippet?.authorDisplayName,
+        publishedAt: i.snippet?.topLevelComment?.snippet?.publishedAt,
+        likes: i.snippet?.topLevelComment?.snippet?.likeCount
+      }))
+      .filter((c) => c.commentId && c.text);
+  } catch {
+    return []; // 單一影片留言抓取失敗不影響其他影片
+  }
 }
 
 // 模糊標題的實體比對交給 Astra 批次（每天一次）；金鑰未設定時回 null。

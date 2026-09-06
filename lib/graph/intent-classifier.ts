@@ -12,7 +12,7 @@ export type IntentClass = (typeof INTENT_CLASSES)[number];
 export interface IntentClassification {
   intentClass: IntentClass;
   weight: number;
-  classifiedBy: "rule";
+  classifiedBy: "rule" | "ai";
   matched: string[];
 }
 

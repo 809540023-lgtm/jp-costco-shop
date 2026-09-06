@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runDailyPipeline } from "@/lib/graph/pipeline";
-import { searchResellerVideos, ingestRadarVideos } from "@/lib/graph/youtube-radar";
+import { searchResellerVideos, ingestRadarVideos, fetchVideoComments } from "@/lib/graph/youtube-radar";
+import { ingestVideoIntents, CommentItem } from "@/lib/graph/intent-ingest";
 import { isAstraConfigured, callLlm } from "@/lib/graph/llm";
 import { AstraDecisionProvider, DecisionInput } from "@/lib/graph/decision";
 import { notifyAdmin } from "@/lib/line";
@@ -20,9 +21,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    const radar = searchResellerVideos().then(async (videos) => ({
-      youtube: await ingestRadarVideos(videos)
-    })).catch(() => ({ youtube: { videosFetched: 0, listingsCreated: 0, mentionsCreated: 0, entitiesMatched: 0 } }));
+    const radar = searchResellerVideos().then(async (videos) => {
+      const youtube = await ingestRadarVideos(videos);
+      // Agent 2：只對已比對到商品的影片抓留言 → 規則分類（模糊案例升級 AI）→ intent_signal
+      const commentsByVideo = new Map<string, CommentItem[]>();
+      for (const m of youtube.matchedListings) {
+        const comments = await fetchVideoComments(m.videoId);
+        if (comments.length) commentsByVideo.set(m.videoId, comments);
+      }
+      const intents = await ingestVideoIntents(youtube.matchedListings, commentsByVideo);
+      return { youtube, intents };
+    }).catch(() => ({
+      youtube: { videosFetched: 0, listingsCreated: 0, mentionsCreated: 0, entitiesMatched: 0, matchedListings: [] as Array<{ listingId: string; videoId: string; productId: string }> },
+      intents: { commentsConsidered: 0, signalsCreated: 0, aiUpgraded: 0 }
+    }));
 
     const astra: AstraDecisionProvider | undefined = isAstraConfigured()
       ? async (entity: { id: string; canonicalName: string; brand: string | null }, input: DecisionInput) => {
@@ -43,7 +55,7 @@ export async function GET(request: Request) {
     const results = await runDailyPipeline({ limit: 200, astra });
     const radarResult = await radar;
     const counts = results.reduce((acc, r) => { acc[r.decision] = (acc[r.decision] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const summary = `3.0 管線完成：評分 ${results.length} 項，決策分布 ${JSON.stringify(counts)}，YouTube 雷達新增 ${radarResult.youtube.mentionsCreated} 筆提及。`;
+    const summary = `3.0 管線完成：評分 ${results.length} 項，決策分布 ${JSON.stringify(counts)}，YouTube 雷達新增 ${radarResult.youtube.mentionsCreated} 筆提及、留言意圖 ${radarResult.intents.signalsCreated} 筆（AI 升級 ${radarResult.intents.aiUpgraded}）。`;
     await notifyAdmin(summary);
     return NextResponse.json({ summary, counts, radar: radarResult, evaluated: results.length });
   } catch (e) {
