@@ -20,6 +20,8 @@
 | Agent 4 AI 採購主管 | `lib/graph/decision.ts` | 決策映射（reject/observe/list/top50/weekly_pick/hot_candidate）；Astra 僅處理通過門檻的候選，無金鑰自動降級規則 |
 | Agent 5 自動營運 | `lib/graph/listing-draft.ts` | 自動產生繁中草稿（content_draft）→ 人工核准 → 既有 publish 流程 |
 | Agent 6 訂單與採購 | `lib/graph/procurement.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理 |
+| 👁️ Vision 辨識 | `lib/vision/vision-client.ts`、`lib/vision/pipeline.ts` | 現場照片/價牌 → 結構化候選（costco_vision_candidates）；單一價格非特價證據；情境照標記 CONTEXT_ONLY；無金鑰時自動跳過 |
+| 🔗 商品/價牌配對 | `lib/vision/pairing.ts` | Item Number/JAN 強證據＋品牌/名稱/規格/時間綜合評分；檔名僅微弱加分（不可只靠檔名連號）；產出 NEEDS_REVIEW 候選 |
 | 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot |
 | 直播訊號匯入 | `scripts/import-livestream-signal.js` | 競業直播帶貨清單（如 `~/costco-analysis/products_part*.md`）寫入 Graph；清冊不提交 GitHub |
 | Dashboard | `/admin` 首頁 | `v_dashboard_funnel` 今日漏斗 + 待採購件數 |
@@ -85,6 +87,7 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 | `YOUTUBE_API_KEY` | Agent 1 YouTube 代購影片雷達（未設定時雷達跳過） |
 | `ASTRA_ENDPOINT` / `ASTRA_API_KEY` / `ASTRA_MODEL` | Astra（OpenAI 相容 endpoint）；僅用於實體比對、意圖、影片理解、適合度、採購決策。未設定時全程規則引擎 |
 | `SOL_ENDPOINT` / `SOL_API_KEY` / `SOL_MODEL` | 一般文案/翻譯/摘要用較低成本模型（未設定沿用 Astra 或規則） |
+| `VISION_ENDPOINT` / `VISION_API_KEY` / `VISION_MODEL` | 現場照片辨識（OpenAI 相容 vision；未設定沿用 Astra，兩者皆無時後台顯示已跳過） |
 | `JPY_TWD_RATE` | 匯率（計算層集中轉換，預設 0.22） |
 | `SUITABILITY_THRESHOLD` / `INTENT_THRESHOLD` 等 | 3.0 門檻覆寫（見 `lib/graph/config.ts`） |
 

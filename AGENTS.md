@@ -23,6 +23,7 @@
 - Astra 只做五件事（實體比對/意圖/影片理解/適合度/採購決策）且僅限通過 Agent 3 門檻的候選；無金鑰時規則引擎接管，系統照常運作。
 - 競業直播帶貨清冊與 `reseller_mention` 資料只寫 Supabase，**不可提交到公開 GitHub**。
 - 訂單擴充（運費閘門 `shipping_fee_status`）只能新增欄位，不可破壞既有訂單流程。
+- Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
 
 ## 技術
 - Next.js + TypeScript + Tailwind CSS

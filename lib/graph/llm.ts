@@ -51,3 +51,43 @@ export async function callLlm(
     return null;
   }
 }
+
+// Vision（圖片理解）：優先專用 VISION_*，未設定沿用 Astra。
+// OpenAI 相容 chat completions，image_url 內容。
+const VISION_ENDPOINT = process.env.VISION_ENDPOINT || ASTRA_ENDPOINT;
+const VISION_API_KEY = process.env.VISION_API_KEY || ASTRA_API_KEY;
+const VISION_MODEL = process.env.VISION_MODEL || ASTRA_MODEL || "vision";
+
+export async function callVision(
+  systemPrompt: string,
+  userPrompt: string,
+  imageUrl: string
+): Promise<{ model: string; content: string } | null> {
+  if (!VISION_ENDPOINT || !VISION_API_KEY) return null;
+  try {
+    const response = await fetch(VISION_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${VISION_API_KEY}` },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userPrompt },
+              { type: "image_url", image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        temperature: 0.1
+      })
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = payload.choices?.[0]?.message?.content;
+    return content ? { model: VISION_MODEL, content } : null;
+  } catch {
+    return null;
+  }
+}
