@@ -1,6 +1,6 @@
 // 模型路由（SPEC 模型使用原則）：便宜模型/程式做一般工作，Astra 只做五種高價值推理。
 // 未設定金鑰時一律回 null，呼叫端自動降級為規則引擎 → 系統永遠可運作。
-export type LlmTask = "entity_matching" | "intent" | "video_understanding" | "suitability" | "procurement_decision";
+export type LlmTask = "entity_matching" | "intent" | "video_understanding" | "suitability" | "procurement_decision" | "content_copy";
 
 const ASTRA_ENDPOINT = process.env.ASTRA_ENDPOINT; // OpenAI 相容 chat completions endpoint
 const ASTRA_API_KEY = process.env.ASTRA_API_KEY;

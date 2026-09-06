@@ -18,12 +18,12 @@
 | Agent 2 購買意圖 | `lib/graph/intent-classifier.ts` | 規則引擎分類 9 種意圖（want_buy/exists_tw 等）＋ intent_score |
 | Agent 3 適合度 | `lib/graph/suitability.ts` | Taiwan Daigou Suitability Score；`tw_import_ok=false` 硬性淘汰 |
 | Agent 4 AI 採購主管 | `lib/graph/decision.ts` | 決策映射（reject/observe/list/top50/weekly_pick/hot_candidate）；Astra 僅處理通過門檻的候選，無金鑰自動降級規則 |
-| Agent 5 自動營運 | `lib/graph/listing-draft.ts` | 自動產生繁中草稿（content_draft）→ 人工核准 → 既有 publish 流程 |
+| Agent 5 自動營運 | `lib/graph/listing-draft.ts`、`lib/graph/content.ts`、`lib/publish.ts` | 自動產生繁中草稿（content_draft）→ 後台 `/admin/drafts` 一鍵核准／排程 → 沿用既有 publish 流程（`lib/publish.ts` 共用）；排程到期由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 自動發布並 LINE 通知 |
 | Agent 6 訂單與採購 | `lib/graph/procurement.ts`、`lib/orders.ts`、`lib/line.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理；後台 `/admin/procurement`、訂單頁運費閘門表單、API `GET/POST /api/admin/procurement`、`POST /api/admin/orders/shipping-fee`；cron 有待採購時自動 LINE 通知 |
 | 👁️ Vision 辨識 | `lib/vision/vision-client.ts`、`lib/vision/pipeline.ts` | 現場照片/價牌 → 結構化候選（costco_vision_candidates）；單一價格非特價證據；情境照標記 CONTEXT_ONLY；無金鑰時自動跳過 |
 | 🔗 商品/價牌配對 | `lib/vision/pairing.ts` | Item Number/JAN 強證據＋品牌/名稱/規格/時間綜合評分；檔名僅微弱加分（不可只靠檔名連號）；產出 NEEDS_REVIEW 候選 |
 | 🏷️ 特價草稿（配對 → weekly_store_deals） | `lib/vision/deals.ts` | 僅處理人工 VERIFIED 的配對；無促銷文字證據時清空特價欄位（單一價格非特價）；產出一律 draft／UNVERIFIED，人工補中文譯名後發布 |
-| 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot |
+| 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot → Agent 5 自動文案草稿 |
 | 直播訊號匯入 | `scripts/import-livestream-signal.js` | 競業直播帶貨清單（如 `~/costco-analysis/products_part*.md`）寫入 Graph；清冊不提交 GitHub |
 | Dashboard | `/admin` 首頁 | `v_dashboard_funnel` 今日漏斗 + 待採購件數 |
 
@@ -48,6 +48,7 @@ npm run dev       # 啟動開發伺服器
 | `/costco/checkout` | 結帳與報關資料表單 |
 | `/costco/success` | 訂單完成頁 |
 | `/admin` | 後台（商品審核/發布、訂單管理、搜尋批次） |
+| `/admin/drafts` | Agent 5 自動文案草稿（核准發布／排程自動發布／取消排程） |
 | `/admin/onsite` | 現場照片 Queue、Vision、配對、特價草稿與審核入口 |
 
 ## 每日搜尋
@@ -102,6 +103,10 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 - 由 `render.yaml` 的 Cron Job 於每天 08:00 (Asia/Taipei) 呼叫。
 - 搜尋失敗時回傳 500 並保留上一期已發布商品。
 
+## Agent 5 自動營運 cron
+- `GET /api/cron/run-agents?secret=<CRON_SECRET>`（每日 08:30）：評分決策後自動為通過門檻的商品產生繁中文案草稿。
+- `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>`：把已核准且排程到期的 `content_draft` 沿用既有 publish 流程發布（建立 2.0 商品 → 本期 collection），完成後 LINE 通知。
+
 > 本系統僅供研究與開發，實際報關請依現行法規與報關業者要求執行。
 
 ## Costco 現場照片管線
@@ -112,5 +117,5 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 - 後台 `/admin/onsite` 的 Drive Sync 使用完整 pagination，將 HEIC 與 MOV 全部寫入私人 Supabase Queue。
 - 後台分批處理 HEIC（轉 JPEG）與 MOV（最多擷取 6 張 Key Frames）；衍生檔只存於私有 Supabase Storage。
 - Vision 辨識 → 商品/價牌配對後，人工將配對標記 `VERIFIED`，再由後台「已確認配對 → 產生特價草稿」批次寫入 `weekly_store_deals`（`id=onsite-<商品照ID>`，draft／UNVERIFIED）。照片以私有 bucket 路徑儲存，前台 `/costco/deals` 讀取時轉 signed URL；人工發布前需補中文譯名。
-- 部署前須套用兩個 `20260901` migration，並設定 `SUPABASE_SERVICE_ROLE_KEY` 與 `GOOGLE_DRIVE_API_KEY`（或 `GOOGLE_DRIVE_ACCESS_TOKEN`）。
+- 部署前須套用 `20260901` 與 `20260907` migrations（含 Agent 5 排程欄位），並設定 `SUPABASE_SERVICE_ROLE_KEY` 與 `GOOGLE_DRIVE_API_KEY`（或 `GOOGLE_DRIVE_ACCESS_TOKEN`）。
 - Drive File ID、原始檔案連結與處理清冊不提交到公開 GitHub。

@@ -26,6 +26,7 @@
 - Agent 6 API（皆需 `isAdmin()`）：`GET/POST /api/admin/procurement`（採購清單＋LINE 通知）、`POST /api/admin/orders/shipping-fee`（運費閘門 `pending → confirmed → paid`）；後台頁 `/admin/procurement`。LINE 訊息只含訂單編號與金額，不含客戶個資。
 - Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
 - 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋。
+- Agent 5 自動文案：通過門檻商品產生 `content_draft`（產出一律 `draft`；已有 draft／approved 不重複產生；promo 欄位不得憑空產生，需明確促銷文字證據）。人工核准後才建立 2.0 商品並沿用 `lib/publish.ts` 共用發布流程（`/api/admin/products/publish` 同一條路徑）；排程發布由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 於到期時執行，核准前商品不進商業端。
 
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
@@ -41,6 +42,9 @@ npm run db:init    # 初始化本地 SQLite（遺留；正式資料層為 Supaba
 npm run seed       # 加入測試資料
 npm run search:run # 手動執行每日搜尋（SQLite 遺留；cron 走 /api/cron/run-search → Supabase）
 npm test           # 執行測試
+
+# 3.0：Agent 5 排程發布（已核准且到期的 content_draft → 既有 publish 流程；每日 cron 呼叫）
+# curl "http://localhost:3000/api/cron/publish-scheduled?secret=<CRON_SECRET>"
 
 # 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
 node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06
