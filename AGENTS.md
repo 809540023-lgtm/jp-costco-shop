@@ -23,6 +23,7 @@
 - Astra 只做五件事（實體比對/意圖/影片理解/適合度/採購決策）且僅限通過 Agent 3 門檻的候選；無金鑰時規則引擎接管，系統照常運作。
 - 競業直播帶貨清冊與 `reseller_mention` 資料只寫 Supabase，**不可提交到公開 GitHub**。
 - 訂單擴充（運費閘門 `shipping_fee_status`）只能新增欄位，不可破壞既有訂單流程。
+- Agent 6 API（皆需 `isAdmin()`）：`GET/POST /api/admin/procurement`（採購清單＋LINE 通知）、`POST /api/admin/orders/shipping-fee`（運費閘門 `pending → confirmed → paid`）；後台頁 `/admin/procurement`。LINE 訊息只含訂單編號與金額，不含客戶個資。
 - Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
 - 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋。
 

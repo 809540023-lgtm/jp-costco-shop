@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { runDailyPipeline } from "@/lib/graph/pipeline";
+import { generateContentDrafts } from "@/lib/graph/content";
 import { searchResellerVideos, ingestRadarVideos, fetchVideoComments } from "@/lib/graph/youtube-radar";
 import { ingestVideoIntents, CommentItem } from "@/lib/graph/intent-ingest";
 import { isAstraConfigured, callLlm } from "@/lib/graph/llm";
 import { AstraDecisionProvider, DecisionInput } from "@/lib/graph/decision";
-import { notifyAdmin } from "@/lib/line";
+import { buildPurchaseList } from "@/lib/graph/procurement";
+import { notifyAdmin, notifyPurchaseList } from "@/lib/line";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -53,11 +55,18 @@ export async function GET(request: Request) {
       : undefined;
 
     const results = await runDailyPipeline({ limit: 200, astra });
+    // Agent 5：通過門檻的商品自動產生繁中內容草稿（無金鑰時模板產生，失敗不阻塞主管線）
+    const drafts = await generateContentDrafts({ limit: 50 }).catch(() => ({ generated: 0, skippedExisting: 0, polished: 0 }));
     const radarResult = await radar;
     const counts = results.reduce((acc, r) => { acc[r.decision] = (acc[r.decision] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const summary = `3.0 管線完成：評分 ${results.length} 項，決策分布 ${JSON.stringify(counts)}，YouTube 雷達新增 ${radarResult.youtube.mentionsCreated} 筆提及、留言意圖 ${radarResult.intents.signalsCreated} 筆（AI 升級 ${radarResult.intents.aiUpgraded}）。`;
+    const summary = `3.0 管線完成：評分 ${results.length} 項，決策分布 ${JSON.stringify(counts)}，自動文案新增 ${drafts.generated} 筆草稿（潤稿 ${drafts.polished}），YouTube 雷達新增 ${radarResult.youtube.mentionsCreated} 筆提及、留言意圖 ${radarResult.intents.signalsCreated} 筆（AI 升級 ${radarResult.intents.aiUpgraded}）。`;
     await notifyAdmin(summary);
-    return NextResponse.json({ summary, counts, radar: radarResult, evaluated: results.length });
+    // Agent 6：有待採購訂單時自動彙總採購清單並 LINE 通知（失敗不影響主管線）。
+    try {
+      const pl = await buildPurchaseList();
+      if (pl.items.length) await notifyPurchaseList(pl);
+    } catch { /* 採購清單通知失敗不影響主管線 */ }
+    return NextResponse.json({ summary, counts, drafts, radar: radarResult, evaluated: results.length });
   } catch (e) {
     const msg = (e as Error).message || "3.0 管線失敗";
     await notifyAdmin(`3.0 管線失敗：${msg}`);

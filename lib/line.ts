@@ -31,3 +31,21 @@ export async function notifyAdmin(text: string) {
   if (!adminId) return false;
   return sendLineMessage(adminId, text);
 }
+
+// Agent 6：自動採購清單摘要（僅商品名稱與數量，不含客戶個資）。
+export interface PurchaseListSummaryItem {
+  productName: string;
+  quantity: number;
+}
+
+export function formatPurchaseListSummary(list: { items: PurchaseListSummaryItem[]; totalItems: number }): string {
+  const shown = list.items.slice(0, 20).map((i) => `• ${i.productName} ×${i.quantity}`);
+  const more = list.items.length > 20 ? `\n…等 ${list.items.length} 項商品` : "";
+  return `🛒 待採購清單（合計 ${list.totalItems} 件）：\n${shown.join("\n")}${more}`;
+}
+
+// 自動採購清單 → LINE 通知管理員（在日採購作業用）。
+export async function notifyPurchaseList(list: { items: PurchaseListSummaryItem[]; totalItems: number }): Promise<boolean> {
+  if (!list.items.length) return false;
+  return notifyAdmin(formatPurchaseListSummary(list));
+}

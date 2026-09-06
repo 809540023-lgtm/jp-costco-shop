@@ -3,12 +3,19 @@
 import { supabase } from "@/lib/supabase";
 import { graphConfig } from "./config";
 
+export type ShippingGateStatus = (typeof graphConfig.shippingGate.statuses)[number];
+
 export interface PurchaseListRow {
   productRef: string;          // order_items.product_id
   productName: string;         // 保存下單當時名稱
   quantity: number;            // 合計數量
   unitPrice: number;
   orderIds: string[];
+}
+
+// 純函式：商品小計 + 實際運費 + 報關費（下單時 SHIPPING_FEE=0，閘門確認後補上實際運費）。
+export function computeShippingTotal(productTotal: number, shippingFee: number, customsFee: number): number {
+  return Number(productTotal) + Number(shippingFee) + Number(customsFee || 0);
 }
 
 // 彙總「待採購」商品清單：狀態已付款/採購中，且未出貨。
@@ -47,7 +54,7 @@ export async function buildPurchaseList(): Promise<{ items: PurchaseListRow[]; t
 // 運費閘門：唯一人工卡點。
 export async function setShippingFeeStatus(
   orderId: string,
-  status: (typeof graphConfig.shippingGate.statuses)[number],
+  status: ShippingGateStatus,
   shippingFee?: number,
   actor = "admin"
 ): Promise<void> {
@@ -55,9 +62,8 @@ export async function setShippingFeeStatus(
   if (typeof shippingFee === "number" && status !== "pending") {
     const { data: order } = await supabase.from("orders").select("product_total, customs_fee").eq("id", orderId).maybeSingle();
     if (order) {
-      const total = Number(order.product_total) + shippingFee + Number(order.customs_fee || 0);
       patch.shipping_fee = shippingFee;
-      patch.total_amount = total;
+      patch.total_amount = computeShippingTotal(Number(order.product_total), shippingFee, Number(order.customs_fee || 0));
     }
   }
   const { error } = await supabase.from("orders").update(patch).eq("id", orderId);

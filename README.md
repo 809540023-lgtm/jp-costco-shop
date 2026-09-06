@@ -19,7 +19,7 @@
 | Agent 3 適合度 | `lib/graph/suitability.ts` | Taiwan Daigou Suitability Score；`tw_import_ok=false` 硬性淘汰 |
 | Agent 4 AI 採購主管 | `lib/graph/decision.ts` | 決策映射（reject/observe/list/top50/weekly_pick/hot_candidate）；Astra 僅處理通過門檻的候選，無金鑰自動降級規則 |
 | Agent 5 自動營運 | `lib/graph/listing-draft.ts` | 自動產生繁中草稿（content_draft）→ 人工核准 → 既有 publish 流程 |
-| Agent 6 訂單與採購 | `lib/graph/procurement.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理 |
+| Agent 6 訂單與採購 | `lib/graph/procurement.ts`、`lib/orders.ts`、`lib/line.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理；後台 `/admin/procurement`、訂單頁運費閘門表單、API `GET/POST /api/admin/procurement`、`POST /api/admin/orders/shipping-fee`；cron 有待採購時自動 LINE 通知 |
 | 👁️ Vision 辨識 | `lib/vision/vision-client.ts`、`lib/vision/pipeline.ts` | 現場照片/價牌 → 結構化候選（costco_vision_candidates）；單一價格非特價證據；情境照標記 CONTEXT_ONLY；無金鑰時自動跳過 |
 | 🔗 商品/價牌配對 | `lib/vision/pairing.ts` | Item Number/JAN 強證據＋品牌/名稱/規格/時間綜合評分；檔名僅微弱加分（不可只靠檔名連號）；產出 NEEDS_REVIEW 候選 |
 | 🏷️ 特價草稿（配對 → weekly_store_deals） | `lib/vision/deals.ts` | 僅處理人工 VERIFIED 的配對；無促銷文字證據時清空特價欄位（單一價格非特價）；產出一律 draft／UNVERIFIED，人工補中文譯名後發布 |

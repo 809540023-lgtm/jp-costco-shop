@@ -4,7 +4,7 @@ import { isAdmin } from "@/lib/auth";
 
 const STATUSES = new Set([
   "pending", "awaiting_payment", "paid", "purchasing", "shipped_from_japan",
-  "customs_clearance", "taiwan_received", "shipped_to_customer",
+  "customs_clearance", "taiwan_received", "shipping_to_customer",
   "completed", "cancelled", "customs_problem"
 ]);
 
