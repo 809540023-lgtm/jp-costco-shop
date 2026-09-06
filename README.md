@@ -4,9 +4,27 @@
 
 ## 技術架構
 - **Next.js** + **TypeScript** + **Tailwind CSS**
-- **SQLite**（better-sqlite3）本地資料庫（正式環境可換成 Supabase PostgreSQL）
+- **Supabase PostgreSQL**（持久化資料層；`lib/supabase.ts` service role + RLS 私有表）
 - **Zod** 表單驗證
 - Server Actions / REST API
+
+## JP Costco Shop 3.0 — AI Autonomous Commerce（進行中）
+以 Product Intelligence Graph 為核心的自動化 commerce 系統（SPEC：`~/JP-Costco-3.0-SPEC/SPEC.md`，審查報告 `docs/3.0_AUDIT.md`）：
+
+| 模組 | 位置 | 說明 |
+|---|---|---|
+| Graph schema | `supabase/migrations/20260907000000_product_intelligence_graph.sql` | product_entity / source_listing / reseller_mention / price_observation / intent_signal / logistics_profile / review_snapshot / score_snapshot / content_draft + 訂單擴充欄位 + 漏斗視圖 |
+| Agent 1 商品雷達 | `lib/graph/youtube-radar.ts` | YouTube Data API 代購影片 → Reseller Promotion Signal（`lib/graph/reseller-signal.ts`） |
+| Agent 2 購買意圖 | `lib/graph/intent-classifier.ts` | 規則引擎分類 9 種意圖（want_buy/exists_tw 等）＋ intent_score |
+| Agent 3 適合度 | `lib/graph/suitability.ts` | Taiwan Daigou Suitability Score；`tw_import_ok=false` 硬性淘汰 |
+| Agent 4 AI 採購主管 | `lib/graph/decision.ts` | 決策映射（reject/observe/list/top50/weekly_pick/hot_candidate）；Astra 僅處理通過門檻的候選，無金鑰自動降級規則 |
+| Agent 5 自動營運 | `lib/graph/listing-draft.ts` | 自動產生繁中草稿（content_draft）→ 人工核准 → 既有 publish 流程 |
+| Agent 6 訂單與採購 | `lib/graph/procurement.ts` | 採購清單彙總、運費閘門（唯一人工卡點）、待出貨整理 |
+| 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot |
+| 直播訊號匯入 | `scripts/import-livestream-signal.js` | 競業直播帶貨清單（如 `~/costco-analysis/products_part*.md`）寫入 Graph；清冊不提交 GitHub |
+| Dashboard | `/admin` 首頁 | `v_dashboard_funnel` 今日漏斗 + 待採購件數 |
+
+門檻與權重全部集中在 `lib/graph/config.ts`（可用環境變數覆寫）。
 
 ## 快速開始
 ```bash
@@ -64,6 +82,11 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 | `GOOGLE_DRIVE_ACCESS_TOKEN` | 私有 Drive 資料夾可改用 OAuth access token；只放部署環境，不提交 GitHub |
 | `COSTCO_DRIVE_FOLDER_ID` | Costco 現場照片資料夾 ID |
 | `LIVE_STREAM_URL` | 直播串流網址（`.m3u8` 或 `.mp4`；未設定時用示範串流） |
+| `YOUTUBE_API_KEY` | Agent 1 YouTube 代購影片雷達（未設定時雷達跳過） |
+| `ASTRA_ENDPOINT` / `ASTRA_API_KEY` / `ASTRA_MODEL` | Astra（OpenAI 相容 endpoint）；僅用於實體比對、意圖、影片理解、適合度、採購決策。未設定時全程規則引擎 |
+| `SOL_ENDPOINT` / `SOL_API_KEY` / `SOL_MODEL` | 一般文案/翻譯/摘要用較低成本模型（未設定沿用 Astra 或規則） |
+| `JPY_TWD_RATE` | 匯率（計算層集中轉換，預設 0.22） |
+| `SUITABILITY_THRESHOLD` / `INTENT_THRESHOLD` 等 | 3.0 門檻覆寫（見 `lib/graph/config.ts`） |
 
 ## 後台權限控管
 - `/admin/*` 需登入（`ADMIN_PASSWORD`），未登入會導向 `/admin/login`。

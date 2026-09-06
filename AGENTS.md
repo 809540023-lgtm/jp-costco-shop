@@ -17,6 +17,13 @@
 - 舊 AI 辨識是 Candidate Data，回看原圖確認後才能標記 `VERIFIED`。
 - 單一價格不是特價證據；需有 OFF／値引／期限等明確促銷文字。
 
+## 3.0 Product Intelligence Graph 規則
+- 新表一律 `create table if not exists` + RLS enable（service_role 存取），**不覆蓋 2.0 既有表**。
+- 所有評分與決策寫入 `score_snapshot`（可追溯）；門檻集中在 `lib/graph/config.ts`，不寫死。
+- Astra 只做五件事（實體比對/意圖/影片理解/適合度/採購決策）且僅限通過 Agent 3 門檻的候選；無金鑰時規則引擎接管，系統照常運作。
+- 競業直播帶貨清冊與 `reseller_mention` 資料只寫 Supabase，**不可提交到公開 GitHub**。
+- 訂單擴充（運費閘門 `shipping_fee_status`）只能新增欄位，不可破壞既有訂單流程。
+
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
 - SQLite（node:sqlite，同步、免編譯）
@@ -27,10 +34,13 @@
 ```bash
 npm run dev        # 開發
 npm run build      # 建置
-npm run db:init    # 初始化資料庫
+npm run db:init    # 初始化本地 SQLite（遺留；正式資料層為 Supabase）
 npm run seed       # 加入測試資料
-npm run search:run # 手動執行每日搜尋
+npm run search:run # 手動執行每日搜尋（SQLite 遺留；cron 走 /api/cron/run-search → Supabase）
 npm test           # 執行測試
+
+# 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
+node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06
 ```
 
 ## 後台權限

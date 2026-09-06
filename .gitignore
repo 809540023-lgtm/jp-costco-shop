@@ -10,3 +10,4 @@ data/*.db-shm
 .env.*.local
 .DS_Store
 *.log
+tsconfig.tsbuildinfo
