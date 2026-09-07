@@ -25,7 +25,7 @@
 - 訂單擴充（運費閘門 `shipping_fee_status`）只能新增欄位，不可破壞既有訂單流程。
 - Agent 6 API（皆需 `isAdmin()`）：`GET/POST /api/admin/procurement`（採購清單＋LINE 通知）、`POST /api/admin/orders/shipping-fee`（運費閘門 `pending → confirmed → paid`）；後台頁 `/admin/procurement`。LINE 訊息只含訂單編號與金額，不含客戶個資。
 - Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
-- 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋。
+- 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋；同批次寫入 `costco_price_observations`（verified=false）並以 JAN 比對 `products` 補 `product_id`。
 - Agent 5 自動文案：通過門檻商品產生 `content_draft`（產出一律 `draft`；已有 draft／approved 不重複產生；promo 欄位不得憑空產生，需明確促銷文字證據）。人工核准後才建立 2.0 商品並沿用 `lib/publish.ts` 共用發布流程（`/api/admin/products/publish` 同一條路徑）；排程發布由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 於到期時執行，核准前商品不進商業端。
 
 ## 技術

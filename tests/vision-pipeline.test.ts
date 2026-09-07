@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseVisionResult, applySaleEvidenceRule, VisionResult } from "../lib/vision/vision-client";
 import { scorePairing, pairCandidates, PairCandidate, PAIRING_MIN_SCORE } from "../lib/vision/pairing";
-import { mergePairingToDeal, dealIdFor, DealPhotoContext } from "../lib/vision/deals";
+import { mergePairingToDeal, dealIdFor, buildObservationFromDeal, DealPhotoContext } from "../lib/vision/deals";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 60000).toISOString();
 
@@ -144,5 +144,38 @@ describe("配對 → weekly_store_deals 特價草稿", () => {
     const product = dctx({ fileName: "IMG_3461.HEIC", candidate: null });
     const deal = mergePairingToDeal(product, null);
     expect(deal.product_name_ja).toBe("IMG_3461");
+  });
+});
+
+describe("配對 → costco_price_observations 價格觀察", () => {
+  it("以價牌照為鍵寫入觀察，帶入 deal 價格與折扣", () => {
+    const product = dctx({ photoId: "drive-p1", candidate: { product_name: "A", jan: "49012345" } });
+    const tag = dctx({
+      photoId: "drive-t1", capturedAt: "2026-09-01T10:00:00Z",
+      candidate: { observed_price_jpy: 699, regular_price_jpy: 799, sale_price_jpy: 699, sale_evidence: "値引" }
+    });
+    const deal = mergePairingToDeal(product, tag);
+    const obs = buildObservationFromDeal(product, tag, deal);
+    expect(obs).not.toBeNull();
+    expect(obs!.id).toBe("obs-drive-t1");
+    expect(obs!.photo_id).toBe("drive-t1");
+    expect(obs!.deal_id).toBe(deal.id);
+    expect(obs!.observed_price).toBe(699);
+    expect(obs!.regular_price).toBe(799);
+    expect(obs!.discount_amount).toBe(100);
+    expect(obs!.verified).toBe(false);
+  });
+  it("無任何價格 → 不寫入觀察", () => {
+    const product = dctx({ candidate: { product_name: "A" } });
+    const tag = dctx({ candidate: { costco_item_number: "123456" } });
+    const deal = mergePairingToDeal(product, tag);
+    expect(buildObservationFromDeal(product, tag, deal)).toBeNull();
+  });
+  it("無價牌照 → 以商品照為鍵", () => {
+    const product = dctx({ photoId: "drive-p2", candidate: { product_name: "A", observed_price_jpy: 799 } });
+    const deal = mergePairingToDeal(product, null);
+    const obs = buildObservationFromDeal(product, null, deal);
+    expect(obs!.id).toBe("obs-drive-p2");
+    expect(obs!.observed_price).toBe(799);
   });
 });

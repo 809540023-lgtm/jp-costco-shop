@@ -130,16 +130,61 @@ export interface DealBuildResult {
   pairingsConsidered: number;
   dealsCreated: number;
   dealsUpdated: number;
+  observationsWritten: number;
   skippedAlreadyLinked: number;
   skippedPublished: number;
   skippedMissingPhoto: number;
+}
+
+export interface PriceObservationRow {
+  id: string;
+  product_id: string | null;
+  deal_id: string;
+  photo_id: string;
+  observed_price: number | null;
+  regular_price: number | null;
+  discount_amount: number | null;
+  sale_start_date: string | null;
+  sale_end_date: string | null;
+  observed_at: string | null;
+  confidence: number | null;
+  verified: boolean;
+}
+
+// 價格觀察列：以價牌照（無則商品照）為鍵，冪等；無任何價格時回傳 null
+export function buildObservationFromDeal(
+  product: DealPhotoContext,
+  tag: DealPhotoContext | null,
+  deal: DraftDealRow
+): PriceObservationRow | null {
+  const tc = tag?.candidate ?? {};
+  const pc = product.candidate ?? {};
+  const observedPrice = deal.sale_price_jpy
+    ?? pick(tc.observed_price_jpy, pc.observed_price_jpy, tc.sale_price_jpy, pc.sale_price_jpy);
+  if (observedPrice == null) return null;
+  const photoId = tag?.photoId ?? product.photoId;
+  const capturedAt = tag?.capturedAt ?? product.capturedAt;
+  return {
+    id: `obs-${photoId}`,
+    product_id: deal.product_id,
+    deal_id: deal.id,
+    photo_id: photoId,
+    observed_price: observedPrice,
+    regular_price: deal.regular_price_jpy,
+    discount_amount: deal.discount_jpy,
+    sale_start_date: deal.sale_start_date,
+    sale_end_date: deal.sale_end_date,
+    observed_at: capturedAt ? new Date(capturedAt).toISOString() : null,
+    confidence: deal.ai_confidence,
+    verified: false
+  };
 }
 
 // 對已人工確認（VERIFIED）的配對批次產生／更新特價草稿。
 // 已連結 deal 的商品照不重複處理；已發布的 deal 不覆蓋。
 export async function buildDealsFromVerifiedPairings(limit = 50): Promise<DealBuildResult> {
   const result: DealBuildResult = {
-    pairingsConsidered: 0, dealsCreated: 0, dealsUpdated: 0,
+    pairingsConsidered: 0, dealsCreated: 0, dealsUpdated: 0, observationsWritten: 0,
     skippedAlreadyLinked: 0, skippedPublished: 0, skippedMissingPhoto: 0
   };
   const { data: pairings, error } = await supabase
@@ -205,6 +250,25 @@ export async function buildDealsFromVerifiedPairings(limit = 50): Promise<DealBu
     };
   };
 
+  // Product Master 連結：以 JAN 精確比對 products（找不到就留空，人工處理）
+  const janValues = Array.from(new Set(
+    photoIds.flatMap((photoId) => {
+      const jan = candidateByPhoto.get(photoId)?.jan;
+      return jan ? [String(jan).trim()] : [];
+    })
+  ));
+  const productIdByJan = new Map<string, string>();
+  if (janValues.length) {
+    const { data: matched, error: matchError } = await supabase
+      .from("products")
+      .select("id, jan_code")
+      .in("jan_code", janValues);
+    if (matchError) throw new Error(`Product Master 比對失敗：${matchError.message}`);
+    for (const p of matched || []) {
+      if (p.jan_code) productIdByJan.set(String(p.jan_code).trim(), p.id as string);
+    }
+  }
+
   for (const pairing of pairings) {
     result.pairingsConsidered += 1;
     const productCtx = toContext(pairing.product_photo_id);
@@ -214,6 +278,18 @@ export async function buildDealsFromVerifiedPairings(limit = 50): Promise<DealBu
       continue;
     }
     const tagCtx = pairing.price_tag_photo_id ? toContext(pairing.price_tag_photo_id) : null;
+    // Product Master 連結：JAN 比對到既有商品時補 product_id
+    if (!productCtx.productId) {
+      const jan = pick(productCtx.candidate?.jan, tagCtx?.candidate?.jan);
+      const matchedProductId = jan ? productIdByJan.get(String(jan).trim()) : null;
+      if (matchedProductId) {
+        productCtx.productId = matchedProductId;
+        await supabase
+          .from("costco_photo_processing_queue")
+          .update({ product_id: matchedProductId, updated_at: new Date().toISOString() })
+          .eq("id", productCtx.photoId);
+      }
+    }
     const draft = mergePairingToDeal(productCtx, tagCtx);
 
     const { data: existing } = await supabase
@@ -235,6 +311,16 @@ export async function buildDealsFromVerifiedPairings(limit = 50): Promise<DealBu
       .update({ deal_id: draft.id, updated_at: new Date().toISOString() })
       .in("id", linkedIds);
     if (linkError) throw new Error(`照片 deal 連結失敗：${linkError.message}`);
+
+    // 價格觀察：每組配對一筆（以價牌照為鍵），無任何價格則略過
+    const observation = buildObservationFromDeal(productCtx, tagCtx, draft);
+    if (observation) {
+      const { error: obsError } = await supabase
+        .from("costco_price_observations")
+        .upsert(observation, { onConflict: "id" });
+      if (obsError) throw new Error(`價格觀察寫入失敗：${obsError.message}`);
+      result.observationsWritten += 1;
+    }
   }
   return result;
 }

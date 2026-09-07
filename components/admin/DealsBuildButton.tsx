@@ -7,6 +7,7 @@ interface DealBuildResult {
   pairingsConsidered: number;
   dealsCreated: number;
   dealsUpdated: number;
+  observationsWritten: number;
   skippedAlreadyLinked: number;
   skippedPublished: number;
   skippedMissingPhoto: number;
@@ -30,7 +31,7 @@ export default function DealsBuildButton() {
       if (!response.ok || !data.result) throw new Error(data.error || "特價草稿產生失敗");
       const r = data.result;
       setMessage(
-        `已確認配對 ${r.pairingsConsidered} 組：新增特價草稿 ${r.dealsCreated}、更新草稿 ${r.dealsUpdated}；` +
+        `已確認配對 ${r.pairingsConsidered} 組：新增特價草稿 ${r.dealsCreated}、更新草稿 ${r.dealsUpdated}、價格觀察 ${r.observationsWritten}；` +
         `略過（已連結 ${r.skippedAlreadyLinked}、已發布 ${r.skippedPublished}、缺少照片 ${r.skippedMissingPhoto}）。` +
         `草稿一律待人工確認譯名與發布。`
       );
