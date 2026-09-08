@@ -117,5 +117,6 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 - 後台 `/admin/onsite` 的 Drive Sync 使用完整 pagination，將 HEIC 與 MOV 全部寫入私人 Supabase Queue。
 - 後台分批處理 HEIC（轉 JPEG）與 MOV（最多擷取 6 張 Key Frames）；衍生檔只存於私有 Supabase Storage。
 - Vision 辨識 → 商品/價牌配對後，人工於 `/admin/onsite` 回看原圖審核配對（VERIFIED／REJECTED，`POST /api/admin/onsite/pairings/review`），再由「已確認配對 → 產生特價草稿」批次寫入 `weekly_store_deals`（`id=onsite-<商品照ID>`，draft／UNVERIFIED）與 `costco_price_observations`（`id=obs-<價牌照ID>`，verified=false），並以 JAN 比對 Product Master（`products`）自動補 `product_id`。草稿於同頁補中文譯名／價格／期限後發布（`POST /api/admin/onsite/deals/update`，發布需中文譯名、已發布不可再改）。照片以私有 bucket 路徑儲存，前台 `/costco/deals` 讀取時轉 signed URL。
+- 驗收數字報告（交接文件規定的實際數字，不用模糊百分比）：`/admin/onsite` 底部「驗收數字報告」區塊與 `GET /api/admin/onsite/report`（JSON 匯出），含檔案結算恆等式檢查：`Drive 總數 = 成功辨識 + 情境照 + 無法辨識 + 待處理`。
 - 部署前須套用 `20260901` 與 `20260907` migrations（含 Agent 5 排程欄位），並設定 `SUPABASE_SERVICE_ROLE_KEY` 與 `GOOGLE_DRIVE_API_KEY`（或 `GOOGLE_DRIVE_ACCESS_TOKEN`）。
 - Drive File ID、原始檔案連結與處理清冊不提交到公開 GitHub。

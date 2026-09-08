@@ -7,6 +7,7 @@ import VisionRunButton from "@/components/admin/VisionRunButton";
 import DealsBuildButton from "@/components/admin/DealsBuildButton";
 import PairingReviewList from "@/components/admin/PairingReviewList";
 import DraftDealsReview from "@/components/admin/DraftDealsReview";
+import OnsiteReportSection from "@/components/admin/OnsiteReportSection";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function OnsiteAdminPage() {
       </div>
       <PairingReviewList pairings={pairings} />
       <DraftDealsReview drafts={drafts} />
+      <OnsiteReportSection />
     </div>
   );
 }
