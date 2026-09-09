@@ -9,6 +9,40 @@ const SOL_ENDPOINT = process.env.SOL_ENDPOINT || ASTRA_ENDPOINT;
 const SOL_API_KEY = process.env.SOL_API_KEY || ASTRA_API_KEY;
 const SOL_MODEL = process.env.SOL_MODEL || "sol";
 
+// 併發限制：同時間最多 N 個 Agent 呼叫 LLM（預設 3，可用 LLM_MAX_CONCURRENCY 覆寫），
+// 避免每日管線（實體比對＋意圖升級＋決策＋文案潤稿）一次打爆 endpoint 或超用額度。
+export class Semaphore {
+  private available: number;
+  private waiters: Array<() => void> = [];
+  constructor(limit: number) {
+    if (!Number.isFinite(limit) || limit < 1) throw new Error("Semaphore limit 必須 ≥ 1");
+    this.available = Math.floor(limit);
+  }
+  async acquire(): Promise<void> {
+    if (this.available > 0) {
+      this.available--;
+      return;
+    }
+    await new Promise<void>((resolve) => this.waiters.push(resolve));
+  }
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) next(); // 名額直接交接給佇列中的下一個，不重複計數
+    else this.available++;
+  }
+}
+
+const llmSemaphore = new Semaphore(Number(process.env.LLM_MAX_CONCURRENCY || "3"));
+
+export async function withLlmSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await llmSemaphore.acquire();
+  try {
+    return await fn();
+  } finally {
+    llmSemaphore.release();
+  }
+}
+
 export function isAstraConfigured(): boolean {
   return Boolean(ASTRA_ENDPOINT && ASTRA_API_KEY);
 }
@@ -29,27 +63,29 @@ export async function callLlm(
   const apiKey = useAstra ? ASTRA_API_KEY : SOL_API_KEY;
   const model = useAstra ? ASTRA_MODEL : SOL_MODEL;
   if (!endpoint || !apiKey) return null;
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.2,
-        ...(opts?.json ? { response_format: { type: "json_object" } } : {})
-      })
-    });
-    if (!response.ok) return null;
-    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = payload.choices?.[0]?.message?.content;
-    return content ? { model, content } : null;
-  } catch {
-    return null;
-  }
+  return withLlmSlot(async () => {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.2,
+          ...(opts?.json ? { response_format: { type: "json_object" } } : {})
+        })
+      });
+      if (!response.ok) return null;
+      const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const content = payload.choices?.[0]?.message?.content;
+      return content ? { model, content } : null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 // Vision（圖片理解）：優先專用 VISION_*，未設定沿用 Astra。
