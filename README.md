@@ -23,7 +23,9 @@
 | 👁️ Vision 辨識 | `lib/vision/vision-client.ts`、`lib/vision/pipeline.ts` | 現場照片/價牌 → 結構化候選（costco_vision_candidates）；單一價格非特價證據；情境照標記 CONTEXT_ONLY；無金鑰時自動跳過 |
 | 🔗 商品/價牌配對 | `lib/vision/pairing.ts` | Item Number/JAN 強證據＋品牌/名稱/規格/時間綜合評分；檔名僅微弱加分（不可只靠檔名連號）；產出 NEEDS_REVIEW 候選 |
 | 🏷️ 特價草稿（配對 → weekly_store_deals） | `lib/vision/deals.ts` | 僅處理人工 VERIFIED 的配對；無促銷文字證據時清空特價欄位（單一價格非特價）；產出一律 draft／UNVERIFIED，人工補中文譯名後發布 |
-| 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot → Agent 5 自動文案草稿 |
+| 📊 Costco 官方擷取 | `lib/costco-api.ts`（主要）、`lib/costco-fetch.ts`（HTML 備援） | 每日搜尋主要來源改為官方 REST API：價格、評分、評論數、圖片、庫存、英文名、官方標籤（Hot Buy／Made In Japan）。HTML 解析只在 API 失敗時接手（僅有商品連結） |
+| 🧩 實體比對與觀測 | `lib/graph/entity-match.ts`、`lib/graph/observations.ts` | 官方商品 → `product_entity` 比對（完全相等／唯一包含才命中，模糊回 null）；命中後寫入 `price_observation`（costco_jp，is_promo）與 `review_snapshot`（jp，avg_rating/review_count），同日重跑不重複寫入 |
+| 每日管線 | `app/api/cron/run-agents`、`lib/graph/pipeline.ts` | cron 每日 08:30：雷達 → 評分 → 決策 → score_snapshot → Agent 5 自動文案草稿；Agent 3 的 `avgRating` 讀取 `review_snapshot` 真實評分 |
 | 直播訊號匯入 | `scripts/import-livestream-signal.js` | 競業直播帶貨清單（如 `~/costco-analysis/products_part*.md`）寫入 Graph；清冊不提交 GitHub |
 | Dashboard | `/admin` 首頁 | `v_dashboard_funnel` 今日漏斗 + 待採購件數 |
 
@@ -53,10 +55,33 @@ npm run dev       # 啟動開發伺服器
 
 ## 每日搜尋
 ```bash
-npm run search:run   # 手動執行一次每日搜尋
+npm run search:run   # 手動執行一次每日搜尋（SQLite 遺留路徑）
 npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序，含完整說明與其他通路價格比較）
 ```
 正式環境可設定 cron 於每天早上 08:00 執行。
+
+### 擷取來源與欄位
+`GET /api/cron/run-search` 的商品來源順序：
+
+1. **官方 REST API**（`lib/costco-api.ts`）：`https://www.costco.co.jp/rest/v2/japan/products/search?query=:sellCount-desc`
+   預設抓 3 頁 × 100 筆（可用 `COSTCO_FETCH_PAGES` 調整，上限 20 頁）。
+2. **HTML 備援**（`lib/costco-fetch.ts`）：僅在 API 完全失敗時接手，只能取得商品連結。
+
+兩者都失敗時回傳 500 且**不寫入任何批次**，網站繼續顯示上一期已發布商品。
+
+官方欄位對應到 2.0 `products`：
+
+| 官方欄位 | 寫入欄位 | 說明 |
+|---|---|---|
+| `price.value` | `jp_price` | 官方現行售價（含促銷價） |
+| `basePrice.value` | `discount_price` | 官方促銷前原價，**僅在具明確促銷證據時寫入**（單一價格不算特價） |
+| `averageRating` | `rating` | 日本官方評分 |
+| `numberOfReviews` | `review_count` | 評論數（排名引擎 reviews 權重 0.6 的依據） |
+| `images` | `image_url` | 優先 `zoom` > `product` > `thumbnail` |
+| `decalData` | `is_hot_buy` / `japan_exclusive_note` | 官方標籤 `Hot Buy`／`Made In Japan`（Made In Japan 使 `japanExclusive` 由 0.4/0.9 提升為 1.0） |
+| `stock` | `in_stock` | `stockLevelStatus = inStock` |
+
+缺值的欄位**不會寫入**（PostgREST upsert 只更新 payload 內欄位），因此某日來源失敗時不會把既有價格／評分／圖片覆蓋成 null。
 
 ## 商品頁內容
 每個商品頁會顯示：
@@ -80,6 +105,7 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 | `LINE_ADMIN_ID` | 管理員 LINE ID |
 | `ADMIN_PASSWORD` | 後台登入密碼（未設定時預設 `changeme`，正式環境務必設定） |
 | `CRON_SECRET` | 每日搜尋 cron 的保護密鑰 |
+| `COSTCO_FETCH_PAGES` | 每日搜尋向官方 API 抓取的頁數（預設 3，每頁 100 筆） |
 | `SUPABASE_ACCESS_TOKEN` | Supabase 管理 API 個人權杖 |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 持久化資料庫（尚未啟用） |
 | `GOOGLE_DRIVE_API_KEY` | 後台完整掃描公開共享 Costco Drive 資料夾；只放部署環境，不提交 GitHub |
@@ -101,7 +127,9 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 ## 每日搜尋 cron
 - 觸發端點：`GET /api/cron/run-search?secret=<CRON_SECRET>`（或 header `x-cron-secret`）。
 - 由 `render.yaml` 的 Cron Job 於每天 08:00 (Asia/Taipei) 呼叫。
-- 搜尋失敗時回傳 500 並保留上一期已發布商品。
+- 流程：官方 API 擷取（價格／評分／評論數／圖片／標籤）→ 寫入待審核商品 → 同步 Graph 價格與評價觀測。
+- 搜尋失敗時回傳 500 並保留上一期已發布商品（所有來源皆失敗時不建立空批次）。
+- 可選環境變數：`COSTCO_FETCH_PAGES`（預設 3）。
 
 ## Agent 5 自動營運 cron
 - `GET /api/cron/run-agents?secret=<CRON_SECRET>`（每日 08:30）：評分決策後自動為通過門檻的商品產生繁中文案草稿。

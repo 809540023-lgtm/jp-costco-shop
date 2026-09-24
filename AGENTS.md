@@ -28,6 +28,16 @@
 - 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋；同批次寫入 `costco_price_observations`（verified=false）並以 JAN 比對 `products` 補 `product_id`。
 - Agent 5 自動文案：通過門檻商品產生 `content_draft`（產出一律 `draft`；已有 draft／approved 不重複產生；promo 欄位不得憑空產生，需明確促銷文字證據）。人工核准後才建立 2.0 商品並沿用 `lib/publish.ts` 共用發布流程（`/api/admin/products/publish` 同一條路徑）；排程發布由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 於到期時執行，核准前商品不進商業端。
 
+## Costco 官方擷取規則（每日搜尋）
+- 來源順序固定：官方 REST API（`lib/costco-api.ts`）優先，HTML 解析（`lib/costco-fetch.ts`）僅在 API 完全失敗時備援。
+- 價格／評分／評論數／圖片／庫存一律取自官方回傳欄位，**不可推估或補值**；抓不到就留空。
+- 同一價格不構成特價：`discount_price` 只在「原價 > 現行價」且具官方折扣區間／折扣金額時才寫入。
+- `Made In Japan`、`Hot Buy` 等官方標籤為證據來源，需保留原文於 `japan_exclusive_note`。
+- 寫入 `products` 時**缺值欄位一律省略**（不可寫 null），避免來源失敗那天覆蓋既有價格／評分。
+- 所有來源皆失敗時丟錯，不可建立空批次或清空已發布集合。
+- 觀測寫入 `price_observation`（market `costco_jp`，`is_promo` 依促銷證據）與 `review_snapshot`（market `jp`）；同一實體、同一 market、同一天不重複寫入。
+- 2.0 商品 → 3.0 `product_entity` 比對（`lib/graph/entity-match.ts`）只在「正規化後完全相等」或「唯一包含命中」時成立；命中多個實體一律回 null，交由 Agent 1／Astra 實體比對處理，**不可強行合併**。
+
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
 - SQLite（node:sqlite，同步、免編譯）
@@ -54,6 +64,8 @@ node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --pla
 - 後台需登入：環境變數 `ADMIN_PASSWORD`（未設定時預設 `changeme`）。
 - 管理操作走 API route（`/api/admin/*`），全部需 `isAdmin()` 檢查。
 - 每日搜尋端點：`GET /api/cron/run-search?secret=<CRON_SECRET>`。
+  - 官方擷取頁數可用 `COSTCO_FETCH_PAGES` 調整（預設 3 頁 × 100 筆）。
+  - 回傳含 `sources`（各來源成功／數量）與 `observations`（Graph 觀測寫入數）。
 
 ## 重要：不要用「含 redirect() 的 Server Action」
 本專案的 Next.js 版本（15.x + React 19）在 `next start` 下，Server Action 呼叫 `redirect()` 會觸發 `Connection closed`（digest 1962105350）。請改用 **Route Handler + 客戶端元件**（fetch API 後 `router.refresh()` / `window.location`）做管理操作。

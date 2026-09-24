@@ -12,6 +12,12 @@ const JPY_TWD = Number(process.env.JPY_TWD_RATE || "0.22");
 const HANDLING_PCT = Number(process.env.HANDLING_PCT || "0.1"); // 代購手續與包裝估計
 const SHIPPING_TWD_PER_KG = Number(process.env.SHIPPING_TWD_PER_KG || "160"); // 國際運費粗估（人工閘門最終確認）
 
+function numOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export interface PipelineRow {
   entityId: string;
   resellerScore: number;
@@ -121,6 +127,16 @@ export async function runPipelineForEntity(
   // 日本限定性代理：台灣無價格觀測 → 假設難買；有 → 需查價差
   const japanExclusive = twPriceTwd == null ? 1 : 0.5;
 
+  // 日本評價（review_snapshot 由每日擷取寫入；尚無資料時維持 null）
+  const { data: reviewRows } = await supabase
+    .from("review_snapshot")
+    .select("avg_rating, observed_at")
+    .eq("product_id", entity.id)
+    .eq("market", "jp")
+    .order("observed_at", { ascending: false })
+    .limit(1);
+  const avgRating = reviewRows && reviewRows[0] ? numOrNull((reviewRows[0] as { avg_rating: unknown }).avg_rating) : null;
+
   const suitability = computeSuitability({
     intentScore: intent,
     japanExclusive: twPriceTwd == null ? 1 : 0.6,
@@ -135,7 +151,7 @@ export async function runPipelineForEntity(
     estimatedMarginTwd: estimatedMarginTwd(jpPriceJpy, twPriceTwd, logistics?.weight_g ?? null),
     hasQualityImage: false, // 由素材管線補充；預設保守
     repeatPurchaseRate: 0,  // 歷史訂單回購率：訂單累積後由分析補上
-    avgRating: null,
+    avgRating,
     resellerSignalScore: signal.score
   });
 
