@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { fetchCostcoJapan } from "@/lib/costco-fetch";
+import { fetchCostcoJapanDetailed } from "@/lib/costco-fetch";
 import { runDailySearch } from "@/lib/search";
+import { syncCostcoJpObservations } from "@/lib/graph/observations";
 import { notifyAdmin } from "@/lib/line";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    const raw = await fetchCostcoJapan();
+    const { products: raw, sources } = await fetchCostcoJapanDetailed();
     const { batchId, count } = await runDailySearch(raw);
-    const summary = `搜尋批次 ${batchId} 完成，保留 ${count} 項日本特色商品。`;
+
+    // 3.0 Graph：官方價格／評分觀測（找不到對應 product_entity 的商品自動跳過）。
+    // 失敗不可影響搜尋結果，因此單獨捕捉。
+    let observations: Awaited<ReturnType<typeof syncCostcoJpObservations>> | { error: string };
+    try {
+      observations = await syncCostcoJpObservations(raw);
+    } catch (e) {
+      observations = { error: (e as Error).message };
+    }
+
+    const sourceText = sources.map((s) => `${s.name}:${s.count}${s.ok ? "" : "(失敗)"}`).join("、");
+    const summary = `搜尋批次 ${batchId} 完成，保留 ${count} 項日本特色商品（來源 ${sourceText}）。`;
     await notifyAdmin(summary);
-    return NextResponse.json({ batchId, count, summary });
+    return NextResponse.json({ batchId, count, sources, observations, summary });
   } catch (e) {
     const msg = (e as Error).message || "搜尋失敗";
     await notifyAdmin(`每日搜尋失敗：${msg}（網站仍顯示上一期已發布商品）`);

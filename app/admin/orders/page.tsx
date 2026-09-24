@@ -1,6 +1,7 @@
 import { listOrders, getOrder, maskIdNumber } from "@/lib/orders";
 import { requireAdmin } from "@/lib/auth";
 import StatusForm from "@/components/admin/StatusForm";
+import ShippingFeeForm from "@/components/admin/ShippingFeeForm";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function AdminOrders() {
                 報關身分證：<span className="font-mono">{maskIdNumber(full?.customs?.id_number || "")}</span>
               </div>
               <StatusForm orderId={o.id} current={o.status} />
+              <ShippingFeeForm orderId={o.id} gateStatus={String(o.shipping_fee_status || "pending")} />
             </div>
           );
         })}

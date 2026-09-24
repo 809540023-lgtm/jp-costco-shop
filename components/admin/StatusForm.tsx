@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const STATUSES = ["pending", "awaiting_payment", "paid", "purchasing", "shipped_from_japan", "customs_clearance", "taiwan_received", "shipped_to_customer", "completed", "cancelled", "customs_problem"];
+const STATUSES = ["pending", "awaiting_payment", "paid", "purchasing", "shipped_from_japan", "customs_clearance", "taiwan_received", "shipping_to_customer", "completed", "cancelled", "customs_problem"];
 
 export default function StatusForm({ orderId, current }: { orderId: string; current: string }) {
   const router = useRouter();

@@ -17,9 +17,31 @@
 - 舊 AI 辨識是 Candidate Data，回看原圖確認後才能標記 `VERIFIED`。
 - 單一價格不是特價證據；需有 OFF／値引／期限等明確促銷文字。
 
+## 3.0 Product Intelligence Graph 規則
+- 新表一律 `create table if not exists` + RLS enable（service_role 存取），**不覆蓋 2.0 既有表**。
+- 所有評分與決策寫入 `score_snapshot`（可追溯）；門檻集中在 `lib/graph/config.ts`，不寫死。
+- Astra 只做五件事（實體比對/意圖/影片理解/適合度/採購決策）且僅限通過 Agent 3 門檻的候選；無金鑰時規則引擎接管，系統照常運作。
+- 競業直播帶貨清冊與 `reseller_mention` 資料只寫 Supabase，**不可提交到公開 GitHub**。
+- 訂單擴充（運費閘門 `shipping_fee_status`）只能新增欄位，不可破壞既有訂單流程。
+- Agent 6 API（皆需 `isAdmin()`）：`GET/POST /api/admin/procurement`（採購清單＋LINE 通知）、`POST /api/admin/orders/shipping-fee`（運費閘門 `pending → confirmed → paid`）；後台頁 `/admin/procurement`。LINE 訊息只含訂單編號與金額，不含客戶個資。
+- Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
+- 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋；同批次寫入 `costco_price_observations`（verified=false）並以 JAN 比對 `products` 補 `product_id`。
+- Agent 5 自動文案：通過門檻商品產生 `content_draft`（產出一律 `draft`；已有 draft／approved 不重複產生；promo 欄位不得憑空產生，需明確促銷文字證據）。人工核准後才建立 2.0 商品並沿用 `lib/publish.ts` 共用發布流程（`/api/admin/products/publish` 同一條路徑）；排程發布由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 於到期時執行，核准前商品不進商業端。
+
+## Costco 官方擷取規則（每日搜尋）
+- 來源順序固定：官方 REST API（`lib/costco-api.ts`）優先，HTML 解析（`lib/costco-fetch.ts`）僅在 API 完全失敗時備援。
+- 價格／評分／評論數／圖片／庫存一律取自官方回傳欄位，**不可推估或補值**；抓不到就留空。
+- 同一價格不構成特價：`discount_price` 只在「原價 > 現行價」且具官方折扣區間／折扣金額時才寫入。
+- `Made In Japan`、`Hot Buy` 等官方標籤為證據來源，需保留原文於 `japan_exclusive_note`。
+- 寫入 `products` 時**缺值欄位一律省略**（不可寫 null），避免來源失敗那天覆蓋既有價格／評分。
+- 所有來源皆失敗時丟錯，不可建立空批次或清空已發布集合。
+- 觀測寫入 `price_observation`（market `costco_jp`，`is_promo` 依促銷證據）與 `review_snapshot`（market `jp`）；同一實體、同一 market、同一天不重複寫入。
+- 2.0 商品 → 3.0 `product_entity` 比對（`lib/graph/entity-match.ts`）只在「正規化後完全相等」或「唯一包含命中」時成立；命中多個實體一律回 null，交由 Agent 1／Astra 實體比對處理，**不可強行合併**。
+
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
 - SQLite（node:sqlite，同步、免編譯）
+- Supabase PostgreSQL（正式資料層：2.0 商品／訂單 + 3.0 Graph 私有表；網域或金鑰失效時執行期會全面失敗，復原步驟見 README「資料層健檢與復原」）
 - Zod 表單驗證
 - 手機優先、RWD、適合 LINE 內建瀏覽器
 
@@ -27,16 +49,25 @@
 ```bash
 npm run dev        # 開發
 npm run build      # 建置
-npm run db:init    # 初始化資料庫
+npm run db:init    # 初始化本地 SQLite（遺留；正式資料層為 Supabase）
+npm run check:supabase # 資料層健檢（DNS／金鑰／資料表；異常時 exit 1）
 npm run seed       # 加入測試資料
-npm run search:run # 手動執行每日搜尋
+npm run search:run # 手動執行每日搜尋（SQLite 遺留；cron 走 /api/cron/run-search → Supabase）
 npm test           # 執行測試
+
+# 3.0：Agent 5 排程發布（已核准且到期的 content_draft → 既有 publish 流程；每日 cron 呼叫）
+# curl "http://localhost:3000/api/cron/publish-scheduled?secret=<CRON_SECRET>"
+
+# 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
+node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06
 ```
 
 ## 後台權限
 - 後台需登入：環境變數 `ADMIN_PASSWORD`（未設定時預設 `changeme`）。
 - 管理操作走 API route（`/api/admin/*`），全部需 `isAdmin()` 檢查。
 - 每日搜尋端點：`GET /api/cron/run-search?secret=<CRON_SECRET>`。
+  - 官方擷取頁數可用 `COSTCO_FETCH_PAGES` 調整（預設 3 頁 × 100 筆）。
+  - 回傳含 `sources`（各來源成功／數量）與 `observations`（Graph 觀測寫入數）。
 
 ## 重要：不要用「含 redirect() 的 Server Action」
 本專案的 Next.js 版本（15.x + React 19）在 `next start` 下，Server Action 呼叫 `redirect()` 會觸發 `Connection closed`（digest 1962105350）。請改用 **Route Handler + 客戶端元件**（fetch API 後 `router.refresh()` / `window.location`）做管理操作。

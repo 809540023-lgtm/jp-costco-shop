@@ -11,6 +11,7 @@ export const DISCLAIMER =
 export interface RawProduct {
   id: string;
   jpName: string;
+  englishName?: string;
   brand?: string;
   category?: string;
   spec?: string;
@@ -18,10 +19,17 @@ export interface RawProduct {
   costcoUrl?: string;
   imageUrl?: string;
   jpPrice?: number;
+  regularPrice?: number; // 官方促銷前原價（僅在有明確促銷證據時才有值）
+  promoEvidence?: string;
   isHotBuy?: boolean;
   isNew?: boolean;
+  madeInJapan?: boolean; // 官方 "Made In Japan" 標籤
+  officialBadges?: string[];
+  inStock?: boolean;
   rating?: number;
   reviewCount?: number;
+  summary?: string;
+  priceConfirmedAt?: string; // 價格確認時間（有抓到價格才有值）
   evidenceSource?: string;
   evidenceType?: string;
 }
@@ -47,7 +55,7 @@ function estimate(raw: RawProduct): RankingInput & {
     isNew: raw.isNew ?? false,
     reviewCount: raw.reviewCount ?? 0,
     rating: raw.rating ?? null,
-    japanExclusive: text.includes("日本") ? 0.9 : 0.4,
+    japanExclusive: raw.madeInJapan ? 1 : text.includes("日本") ? 0.9 : 0.4,
     taiwanDemand: 0.5,
     logisticsFit: 0.6,
     regulationRisk: highRegulation ? 0.9 : 0.2,
@@ -60,6 +68,45 @@ function estimate(raw: RawProduct): RankingInput & {
     highRegulation,
     easilyAvailableInTaiwan
   };
+}
+
+// 只在「有值」時才寫入這些欄位（開放給測試）。某日來源失敗時，既有價格／評分／圖片不會被
+// 覆蓋成 null（PostgREST upsert 只更新 payload 內的欄位）。
+export function buildProductRow(raw: RawProduct, breakdownTotal: number, batchId: string): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: raw.id,
+    jp_name: raw.jpName,
+    evidence_source: raw.evidenceSource ?? null,
+    evidence_type: raw.evidenceType ?? null,
+    status: "pending_review",
+    score: breakdownTotal,
+    search_batch_id: batchId,
+    updated_at: new Date().toISOString()
+  };
+  const optional: Array<[string, unknown]> = [
+    ["brand", raw.brand],
+    ["category", raw.category],
+    ["spec", raw.spec],
+    ["jan_code", raw.janCode],
+    ["english_name", raw.englishName],
+    ["costco_url", raw.costcoUrl],
+    ["image_url", raw.imageUrl],
+    ["jp_price", raw.jpPrice],
+    ["rating", raw.rating],
+    ["review_count", raw.reviewCount],
+    ["summary", raw.summary],
+    ["price_confirmed_at", raw.priceConfirmedAt],
+    // 2.0 既有欄位 discount_price：存放官方標示的促銷前原價，僅在有促銷證據時寫入
+    ["discount_price", raw.promoEvidence ? raw.regularPrice : undefined],
+    ["japan_exclusive_note", raw.madeInJapan ? "官方標籤：Made In Japan" : undefined]
+  ];
+  for (const [key, value] of optional) {
+    if (value !== undefined && value !== null) row[key] = value;
+  }
+  if (raw.isHotBuy !== undefined) row.is_hot_buy = raw.isHotBuy;
+  if (raw.isNew !== undefined) row.is_new = raw.isNew;
+  if (raw.inStock !== undefined) row.in_stock = raw.inStock;
+  return row;
 }
 
 // 建立每日搜尋批次並寫入待審核商品。
@@ -75,15 +122,7 @@ export async function runDailySearch(rawProducts: RawProduct[]): Promise<{ batch
     if (shouldExclude(input)) continue;
     const breakdown = scoreProduct(input);
     if (breakdown.total < 20) continue; // 過低分數不列入
-    await supabase.from("products").upsert({
-      id: raw.id, jp_name: raw.jpName, brand: raw.brand ?? null, category: raw.category ?? null,
-      spec: raw.spec ?? null, jan_code: raw.janCode ?? null, costco_url: raw.costcoUrl ?? null,
-      image_url: raw.imageUrl ?? null, jp_price: raw.jpPrice ?? null,
-      is_hot_buy: raw.isHotBuy ?? false, is_new: raw.isNew ?? false, rating: raw.rating ?? null,
-      review_count: raw.reviewCount ?? 0, evidence_source: raw.evidenceSource ?? null,
-      evidence_type: raw.evidenceType ?? null, status: "pending_review", score: breakdown.total,
-      search_batch_id: batchId, updated_at: new Date().toISOString()
-    }, { onConflict: "id" });
+    await supabase.from("products").upsert(buildProductRow(raw, breakdown.total, batchId), { onConflict: "id" });
     await supabase.from("product_rankings").insert({
       product_id: raw.id, search_batch_id: batchId, score: breakdown.total, score_breakdown: JSON.stringify(breakdown)
     });

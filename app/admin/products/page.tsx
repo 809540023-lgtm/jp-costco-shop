@@ -14,6 +14,7 @@ export default async function AdminProducts() {
     <div>
       <a href="/admin" className="text-sm text-gray-500">← 後台</a>
       <h1 className="mt-2 text-2xl font-extrabold">商品審核與發布</h1>
+      <p className="mt-1 text-sm text-gray-500"><a href="/admin/drafts" className="text-blue-600 underline">🤖 前往 Agent 5 自動文案草稿</a>（AI 自動產生文案，核准後沿用本頁發布流程，可排程）</p>
 
       <h2 className="mt-6 text-lg font-extrabold">待審核（{pending?.length || 0}）</h2>
       <div className="mt-2 space-y-2">

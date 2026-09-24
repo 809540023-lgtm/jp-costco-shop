@@ -3,11 +3,13 @@ import { supabase, audit } from "./supabase";
 import { CheckoutData } from "./validation";
 import { OrderStatus } from "./models";
 import { maskIdNumber, generateOrderNumber } from "./id-utils";
+import { setShippingFeeStatus, computeShippingTotal } from "./graph/procurement";
+import { notifyAdmin } from "./line";
 
 export const SHIPPING_FEE = 0; // 依實際物流設定
 export const CUSTOMS_FEE = 0;
 
-export { maskIdNumber, generateOrderNumber };
+export { maskIdNumber, generateOrderNumber, computeShippingTotal };
 
 export async function createOrder(data: CheckoutData): Promise<{ orderId: string; orderNumber: string }> {
   const orderId = `ord-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -65,4 +67,32 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, ac
   await supabase.from("orders").update({ status, updated_at: new Date().toISOString() }).eq("id", orderId);
   await audit(actor, "order_status_changed", "order", orderId, status);
   await supabase.from("notifications").insert({ type: "status_change", title: "訂單狀態更新", body: `訂單狀態已更新為 ${status}` });
+}
+
+// Agent 6 運費人工閘門（SPEC 第十節）：輸入實際國際運費 → 確認 → 通知客戶補款。
+// 唯一人工卡點，只改 shipping_fee_status 與金額欄位，不動既有訂單狀態流程。
+export async function confirmShippingFee(orderId: string, shippingFee: number, actor = "admin") {
+  if (!Number.isFinite(shippingFee) || shippingFee < 0) throw new Error("運費金額不正確");
+  await setShippingFeeStatus(orderId, "confirmed", shippingFee, actor);
+  const order = await getOrder(orderId);
+  const total = computeShippingTotal(Number(order?.product_total || 0), shippingFee, Number(order?.customs_fee || 0));
+  await supabase.from("notifications").insert({
+    type: "shipping_fee_confirmed",
+    title: `運費已確認 ${order?.order_number || orderId}`,
+    body: `國際運費 NT$${shippingFee.toFixed(0)}，應付總額 NT$${total.toFixed(0)}，請通知客戶補款。`
+  });
+  // LINE 只傳訂單編號與金額，不含客戶個資。
+  await notifyAdmin(`🚚 運費已確認：${order?.order_number || orderId}　運費 NT$${shippingFee.toFixed(0)} → 應付總額 NT$${total.toFixed(0)}，請通知客戶補款。`);
+  return { totalAmount: total };
+}
+
+// 客戶完成補款後關閉運費閘門（confirmed → paid）。
+export async function markShippingFeePaid(orderId: string, actor = "admin") {
+  await setShippingFeeStatus(orderId, "paid", undefined, actor);
+  const order = await getOrder(orderId);
+  await supabase.from("notifications").insert({
+    type: "shipping_fee_paid",
+    title: `運費已付款 ${order?.order_number || orderId}`,
+    body: "運費閘門已關閉，訂單可進入採購／出貨流程。"
+  });
 }

@@ -47,3 +47,27 @@ services:
         sync: false
     buildCommand: npm install
     startCommand: curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-search"
+
+  # 3.0：每日商品智慧管線（雷達 → 評分 → AI 採購決策）
+  - type: cron
+    name: jp-costco-daily-agents
+    runtime: node
+    plan: free
+    schedule: "30 8 * * *"
+    envVars:
+      - key: SITE_URL
+        value: https://jp-costco-shop.onrender.com
+      - key: CRON_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        value: https://ielurceqyovpsnfwtbek.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: ASTRA_ENDPOINT
+        sync: false
+      - key: ASTRA_API_KEY
+        sync: false
+    buildCommand: npm install
+    startCommand: curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-agents"
