@@ -39,6 +39,29 @@ npm run seed      # 加入測試商品
 npm run dev       # 啟動開發伺服器
 ```
 
+## 資料層健檢與復原
+
+Supabase 是 2.0 商品／訂單與 3.0 Graph 的正式資料層。專案被刪除、改名或金鑰失效時，程式不會在 build 階段報錯（`lib/supabase.ts` 有 build placeholder），但執行期查詢與寫入會全部失敗。用這支腳本先確認：
+
+```bash
+npm run check:supabase          # 逐項檢查 DNS、REST 金鑰、28 張資料表
+node scripts/check-supabase.js --json   # 給自動化用的 JSON 輸出（異常時 exit 1）
+```
+
+輸出會指出壞在哪一層（DNS／金鑰／缺表），並標出缺表對應的 migration 檔。
+
+### 復原步驟
+
+1. 登入 <https://supabase.com/dashboard> 確認該專案是「被刪除」還是「被暫停」。暫停（free plan 閒置）可直接 Restore；刪除則無法復原，需重建。
+2. 重建專案後，把新的 `SUPABASE_URL`／`SUPABASE_ANON_KEY`／`SUPABASE_SERVICE_ROLE_KEY` 寫進 `.env`，並同步更新 **Render 的環境變數與 `render.yaml` 內硬編碼的 URL**。
+3. 套用 schema（依序）：
+   - `supabase/schema.sql`（2.0 既有表）
+   - `supabase/migrations/*.sql`（3.0 Graph、Vision、Agent 5，依檔名時間排序）
+   本機有 `psql` 時可直接連線；否則用 CLI `supabase link --project-ref <ref>` + `supabase db push`，或在 Dashboard SQL Editor 貼上。
+   金鑰換新後可重跑 `npm run check:supabase` 確認 28 張表都到位。
+4. 重新匯入資料：`node scripts/seed-supabase.js`（已發布商品快照）、`node scripts/import-livestream-signal.js ...`。
+5. 私有 bucket 需重建：`costco-onsite-media`（**不可**設 public policy）。
+
 ## 主要頁面
 | 路徑 | 功能 |
 |------|------|

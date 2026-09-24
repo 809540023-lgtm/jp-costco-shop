@@ -41,6 +41,7 @@
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
 - SQLite（node:sqlite，同步、免編譯）
+- Supabase PostgreSQL（正式資料層：2.0 商品／訂單 + 3.0 Graph 私有表；網域或金鑰失效時執行期會全面失敗，復原步驟見 README「資料層健檢與復原」）
 - Zod 表單驗證
 - 手機優先、RWD、適合 LINE 內建瀏覽器
 
@@ -49,6 +50,7 @@
 npm run dev        # 開發
 npm run build      # 建置
 npm run db:init    # 初始化本地 SQLite（遺留；正式資料層為 Supabase）
+npm run check:supabase # 資料層健檢（DNS／金鑰／資料表；異常時 exit 1）
 npm run seed       # 加入測試資料
 npm run search:run # 手動執行每日搜尋（SQLite 遺留；cron 走 /api/cron/run-search → Supabase）
 npm test           # 執行測試
