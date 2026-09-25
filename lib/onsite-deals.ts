@@ -48,6 +48,23 @@ export async function getPublishedWeeklyDeals(): Promise<WeeklyStoreDealRow[]> {
   })));
 }
 
+export interface WeeklyDealsResult {
+  deals: WeeklyStoreDealRow[];
+  /** 資料層不可用（Supabase 專案不存在、金鑰失效、網路中斷等） */
+  unavailable: boolean;
+}
+
+// 公開頁面專用：資料層不可用時回傳空清單，不讓整頁變成 Runtime Error。
+// 依 AGENTS.md「外部服務失敗時網站仍須可瀏覽」，個別查詢失敗不得使頁面 500。
+export async function getPublishedWeeklyDealsSafe(): Promise<WeeklyDealsResult> {
+  try {
+    return { deals: await getPublishedWeeklyDeals(), unavailable: false };
+  } catch (e) {
+    console.error("[onsite-deals] 現場商品讀取失敗，改以空清單呈現:", (e as Error).message);
+    return { deals: [], unavailable: true };
+  }
+}
+
 export async function getPhotoQueueSummary() {
   const { data, error, count } = await supabase
     .from("costco_photo_processing_queue")

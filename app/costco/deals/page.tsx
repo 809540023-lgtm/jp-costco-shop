@@ -1,4 +1,4 @@
-import { getPublishedWeeklyDeals } from "@/lib/onsite-deals";
+import { getPublishedWeeklyDealsSafe } from "@/lib/onsite-deals";
 
 export const dynamic = "force-dynamic";
 
@@ -7,14 +7,19 @@ function yen(value: number | null) {
 }
 
 export default async function OnsiteDealsPage() {
-  const deals = await getPublishedWeeklyDeals();
+  const { deals, unavailable } = await getPublishedWeeklyDealsSafe();
 
   return (
     <div>
       <h1 className="text-2xl font-extrabold">🔥 本週 Costco 現場商品</h1>
       <p className="mt-1 text-sm text-gray-500">由日本 Costco 現場照片辨識，經人工確認後才會發布。</p>
 
-      {deals.length === 0 ? (
+      {unavailable ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center text-amber-800">
+          <p className="font-bold">現場商品暫時無法讀取</p>
+          <p className="mt-2 text-sm">資料服務連線異常，我們已記錄並會盡快恢復。其他商品頁面仍可正常瀏覽。</p>
+        </div>
+      ) : deals.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
           現場照片正在整理與確認，已確認商品會顯示在這裡。
         </div>
