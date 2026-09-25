@@ -109,27 +109,58 @@ export function buildProductRow(raw: RawProduct, breakdownTotal: number, batchId
   return row;
 }
 
+// Supabase 用戶端在網路／權限失敗時「回傳 error 而不丟錯」。
+// 若不在這裡檢查，資料層掛掉那天會回報假的成功（批次數看起來正常，實際一筆都沒寫入）。
+function assertOk(result: { error: { message: string } | null }, what: string) {
+  if (result.error) throw new Error(`${what}：${result.error.message}`);
+}
+
 // 建立每日搜尋批次並寫入待審核商品。
 export async function runDailySearch(rawProducts: RawProduct[]): Promise<{ batchId: string; count: number }> {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
   const batchId = `sb-${date}-${now.toISOString().slice(11, 19).replace(/:/g, "")}`;
-  await supabase.from("search_batches").insert({ id: batchId, search_date: date, status: "running", product_count: rawProducts.length });
+  assertOk(
+    await supabase.from("search_batches").insert({ id: batchId, search_date: date, status: "running", product_count: rawProducts.length }),
+    "建立搜尋批次失敗"
+  );
 
   let kept = 0;
-  for (const raw of rawProducts) {
-    const input = estimate(raw);
-    if (shouldExclude(input)) continue;
-    const breakdown = scoreProduct(input);
-    if (breakdown.total < 20) continue; // 過低分數不列入
-    await supabase.from("products").upsert(buildProductRow(raw, breakdown.total, batchId), { onConflict: "id" });
-    await supabase.from("product_rankings").insert({
-      product_id: raw.id, search_batch_id: batchId, score: breakdown.total, score_breakdown: JSON.stringify(breakdown)
-    });
-    kept += 1;
+  try {
+    for (const raw of rawProducts) {
+      const input = estimate(raw);
+      if (shouldExclude(input)) continue;
+      const breakdown = scoreProduct(input);
+      if (breakdown.total < 20) continue; // 過低分數不列入
+      assertOk(
+        await supabase.from("products").upsert(buildProductRow(raw, breakdown.total, batchId), { onConflict: "id" }),
+        `寫入商品失敗（${raw.id}）`
+      );
+      assertOk(
+        await supabase.from("product_rankings").insert({
+          product_id: raw.id,
+          search_batch_id: batchId,
+          score: breakdown.total,
+          score_breakdown: JSON.stringify(breakdown)
+        }),
+        `寫入排名失敗（${raw.id}）`
+      );
+      kept += 1;
+    }
+
+    assertOk(
+      await supabase
+        .from("search_batches")
+        .update({ status: "completed", summary: `保留 ${kept} 項日本特色商品。${DISCLAIMER}`, product_count: kept })
+        .eq("id", batchId),
+      "更新搜尋批次失敗"
+    );
+  } catch (e) {
+    // 讓批次狀態可辨識（best-effort：資料層全掛時這筆也會失敗，不覆蓋原始錯誤）。
+    await supabase.from("search_batches").update({ status: "failed" }).eq("id", batchId);
+    throw e;
   }
 
-  await supabase.from("search_batches").update({ status: "completed", summary: `保留 ${kept} 項日本特色商品。${DISCLAIMER}`, product_count: kept }).eq("id", batchId);
   await audit("search-job", "search_batch_completed", "search_batch", batchId, `kept=${kept}`);
   return { batchId, count: kept };
 }

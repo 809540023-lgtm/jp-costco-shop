@@ -8,13 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "db:init": "node scripts/init-db.js",
     "check:supabase": "node scripts/check-supabase.js",
-    "search:run": "node scripts/run-search.js",
-    "top50": "node scripts/scrape-top50.js",
-    "categories": "node scripts/scrape-categories.js",
-    "seed:published": "node scripts/seed-published.js",
-    "seed": "node scripts/seed.js"
+    "search:run": "node scripts/run-cron.mjs run-search",
+    "agents:run": "node scripts/run-cron.mjs run-agents",
+    "publish:run": "node scripts/run-cron.mjs publish-scheduled",
+    "compare:sync": "node scripts/sync-comparison-prices.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
@@ -27,7 +25,6 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

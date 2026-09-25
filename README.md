@@ -4,7 +4,7 @@
 
 ## 技術架構
 - **Next.js** + **TypeScript** + **Tailwind CSS**
-- **Supabase PostgreSQL**（持久化資料層；`lib/supabase.ts` service role + RLS 私有表）
+- **Supabase PostgreSQL**（唯一持久化資料層；`lib/supabase.ts` service role + RLS 私有表）
 - **Zod** 表單驗證
 - Server Actions / REST API
 
@@ -34,9 +34,8 @@
 ## 快速開始
 ```bash
 npm install
-npm run db:init   # 初始化資料庫
-npm run seed      # 加入測試商品
-npm run dev       # 啟動開發伺服器
+npm run check:supabase   # 確認資料層（Supabase）DNS／金鑰／資料表都正常
+npm run dev              # 啟動開發伺服器
 ```
 
 ## 資料層健檢與復原
@@ -51,6 +50,10 @@ node scripts/check-supabase.js --json   # 給自動化用的 JSON 輸出（異�
 輸出會指出壞在哪一層（DNS／金鑰／缺表），並標出缺表對應的 migration 檔。
 
 ### 復原步驟
+
+> 補充：資料層掛掉時，**公開頁面不會再 500**。`/costco/deals` 走 `getPublishedWeeklyDealsSafe()`
+> （`lib/onsite-deals.ts`），連線失敗時顯示「現場商品暫時無法讀取」提示並繼續提供其他頁面；
+> 管理端仍使用會拋出錯誤的原始函式，方便看出問題。新增公開頁面請照此模式。
 
 1. 登入 <https://supabase.com/dashboard> 確認該專案是「被刪除」還是「被暫停」。暫停（free plan 閒置）可直接 Restore；刪除則無法復原，需重建。
 2. 重建專案後，把新的 `SUPABASE_URL`／`SUPABASE_ANON_KEY`／`SUPABASE_SERVICE_ROLE_KEY` 寫進 `.env`，並同步更新 **Render 的環境變數與 `render.yaml` 內硬編碼的 URL**。
@@ -78,10 +81,15 @@ node scripts/check-supabase.js --json   # 給自動化用的 JSON 輸出（異�
 
 ## 每日搜尋
 ```bash
-npm run search:run   # 手動執行一次每日搜尋（SQLite 遺留路徑）
-npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序，含完整說明與其他通路價格比較）
+npm run search:run   # 手動執行一次每日搜尋（等同 cron：呼叫 /api/cron/run-search）
+npm run agents:run   # 手動執行商品智慧管線（等同 cron：呼叫 /api/cron/run-agents）
+npm run compare:sync -- --limit=20   # 補「其他通路價格比較」（Yahoo 購物／Amazon JP → Supabase）
 ```
-正式環境可設定 cron 於每天早上 08:00 執行。
+`search:run` / `agents:run` / `publish:run` 都是 `scripts/run-cron.mjs` 的包裝：直接以 `x-cron-secret` 呼叫 API route，
+因此**手動執行與 cron 走完全相同的 Supabase 路徑**（3.0 以前的手動 SQLite 路徑已在 Phase 14 移除）。
+需要伺服器已啟動（`npm run dev`），也可用 `--base=https://jp-costco-shop.onrender.com` 直接打正式環境。
+
+正式環境由 `render.yaml` 的 cron 於每天早上 08:00（搜尋）與 08:30（商品智慧管線）執行。
 
 ### 擷取來源與欄位
 `GET /api/cron/run-search` 的商品來源順序：
@@ -121,7 +129,6 @@ npm run top50        # 抓取前 50 名熱門商品（依官方 sellCount 排序
 ## 環境變數
 | 變數 | 說明 |
 |------|------|
-| `DB_PATH` | SQLite 路徑（預設 `data/jp-costco.db`） |
 | `SITE_URL` | 網站網址（LINE 導線用） |
 | `LINE_PHASE` | LINE 銜接階段（`1` 或 `2`） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 第二階段 LINE Messaging API token |

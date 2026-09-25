@@ -75,3 +75,37 @@
 - Supabase 持久化：**受阻**——組織「crewAI」有逾期帳單，Supabase 拒絕建立新專案，需先在 dashboard 結清。
 - LINE 第二階段：需 `LINE_CHANNEL_ACCESS_TOKEN` 與 `LINE_ADMIN_ID`。
 - Costco 商品價格/評分/評論數擷取（需逐商品頁解析）。
+
+## Phase 14：3.0 收尾 — 資料層單軌化 ✅（2026-09-25）
+移除 3.0 以前遺留的 SQLite 路徑，讓「手動執行」與「cron」共用同一條 Supabase route（`docs/3.0_AUDIT.md` 的「應修正」三項全數結案）。
+
+**移除**
+- `lib/db.ts`、`lib/schema.sql`（SQLite DDL；全專案已無人 import）
+- `scripts/run-search.js`、`scrape-top50.js`、`scrape-categories.js`、`upgrade-products.js`、`seed.js`、`init-db.js`、`seed-published.js`
+- `package.json` 的 `db:init`／`seed`／`seed:published`／`top50`／`categories` 指令與 `@types/better-sqlite3`
+- `.gitignore` 的 SQLite 檔案規則（改為整個 `data/`）
+
+**新增（補回被移除腳本仍有價值的能力，但改寫 Supabase）**
+- `scripts/run-cron.mjs`：`npm run search:run`／`agents:run`／`publish:run`，以 `x-cron-secret` 呼叫 `/api/cron/*`；手動與 cron 走完全相同的 Supabase 路徑，可用 `--base=` 打正式環境。舊的 `run-search.js`（寫 SQLite）移除。
+- `scripts/sync-comparison-prices.js`：`npm run compare:sync`，把 `lib/price-compare.js` 抓到的 Yahoo／Amazon 報價寫入 Supabase `comparison_prices`（前台 `/costco/product/[id]` 讀取的就是這張表）。預設跳過已有報價的商品，`--force` 重抓，`--id=` 指定單品。
+
+**強化：資料層失敗不再被吞掉（`lib/search.ts`）**
+supabase-js 在網路／權限失敗時是「回傳 `error` 而不丟錯」，因此 `runDailySearch` 原本會回報假的成功
+（實測：Supabase 掛掉時仍回 `count: 267`，實際一筆都沒寫入）。現在每一次寫入都檢查 `error`，
+失敗即丟錯（批次另標記 `failed` 以利後台辨識），`/api/cron/run-search` 會回 500 並保留上一期已發布商品。
+新增 `tests/search-batch.test.ts`（3 項：批次建立失敗／商品寫入失敗／成功案例）。
+
+**驗證**
+- `npm test`：17 檔／117 測試全過。
+- `npm run build`：通過（40 條路由；僅有 libheif-js 的既有第三方 warning）。
+- `npm run search:run` 對本機 dev server 實測：錯誤 secret → 401；連不到伺服器 → 明確提示；官方 API 擷取 300 筆正常。
+- 全庫掃描確認無任何 `node:sqlite`／`lib/db`／`lib/schema.sql` 殘留引用。
+
+**⚠️ 現況（非本次修改造成）**
+`npm run check:supabase` 顯示 **DNS ENOTFOUND：`ielurceqyovpsnfwtbek.supabase.co` 不存在**（專案已刪除或改名），
+資料層目前不可用 —— 前台商品／現場特價／後台都會讀不到資料，`search:run`／`compare:sync` 會正確回 500 並提示。
+復原步驟見 README「資料層健檢與復原」（`compare:sync` 的寫入段落需待資料層恢復後才能完整驗證）。
+
+### 待辦（3.0 後續）
+- `YOUTUBE_API_KEY` 未設定 → Agent 1 雷達會自動跳過；要實測需補金鑰。
+- 競業直播清冊匯入（`scripts/import-livestream-signal.js`）尚未在本機跑過完整一輪。

@@ -9,6 +9,7 @@
 - 訂單保存下單當時的商品名稱與價格。
 - **身分證字號**不可放在 LINE、網址、前端 console 或錯誤紀錄；後台以遮罩顯示。
 - 每日搜尋失敗時，網站繼續顯示上一期已發布商品。
+- **公開頁面不得因資料層失敗而 500**：個別查詢失敗要優雅退化（空清單＋提示），不可讓整頁變成 Runtime Error。讀取「已發布」資料的公開頁一律走 `*Safe()` 包裝（例：`getPublishedWeeklyDealsSafe()`），需要知道失敗原因的管理端才用原始會拋出的函式。
 - 日本特色商品不足 50 項時，不使用全球商品硬湊。
 - Google Drive 現場照片以 `drive_file_id` 為唯一鍵；不可只掃前 100 張。
 - Drive 清冊與檔案連結只能寫入私人 Supabase Queue，不可提交到公開 GitHub。
@@ -40,8 +41,8 @@
 
 ## 技術
 - Next.js + TypeScript + Tailwind CSS
-- SQLite（node:sqlite，同步、免編譯）
-- Supabase PostgreSQL（正式資料層：2.0 商品／訂單 + 3.0 Graph 私有表；網域或金鑰失效時執行期會全面失敗，復原步驟見 README「資料層健檢與復原」）
+- Supabase PostgreSQL（**唯一**資料層：2.0 商品／訂單 + 3.0 Graph 私有表；網域或金鑰失效時執行期會全面失敗，復原步驟見 README「資料層健檢與復原」）
+  - 手動執行一律走 cron API route（`scripts/run-cron.mjs`），**不可再新增 SQLite／檔案型資料庫分支**（Phase 14 已移除 `lib/db.ts`、`lib/schema.sql` 與 SQLite 腳本）
 - Zod 表單驗證
 - 手機優先、RWD、適合 LINE 內建瀏覽器
 
@@ -49,14 +50,17 @@
 ```bash
 npm run dev        # 開發
 npm run build      # 建置
-npm run db:init    # 初始化本地 SQLite（遺留；正式資料層為 Supabase）
 npm run check:supabase # 資料層健檢（DNS／金鑰／資料表；異常時 exit 1）
-npm run seed       # 加入測試資料
-npm run search:run # 手動執行每日搜尋（SQLite 遺留；cron 走 /api/cron/run-search → Supabase）
 npm test           # 執行測試
 
-# 3.0：Agent 5 排程發布（已核准且到期的 content_draft → 既有 publish 流程；每日 cron 呼叫）
-# curl "http://localhost:3000/api/cron/publish-scheduled?secret=<CRON_SECRET>"
+# 手動觸發 cron（單一 Supabase 路徑：打 API route，不再有 SQLite 分支）
+npm run search:run    # = node scripts/run-cron.mjs run-search（等同每日 08:00 搜尋）
+npm run agents:run    # = node scripts/run-cron.mjs run-agents（每日 08:30 商品智慧管線）
+npm run publish:run   # = node scripts/run-cron.mjs publish-scheduled（到期草稿發布）
+# 需先啟動伺服器（npm run dev）；也可 npm run search:run -- --base=https://jp-costco-shop.onrender.com
+
+# 其他通路價格比較（Yahoo 購物／Amazon JP → Supabase comparison_prices）
+npm run compare:sync -- --limit=20   # 預設跳過已有報價的商品，--force 可重抓
 
 # 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
 node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06
