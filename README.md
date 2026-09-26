@@ -143,6 +143,26 @@ npm run rebuild:supabase -- --url=<新URL> --write-env --all
 > 表名不衝突，但金鑰、用量、備份與資料庫事件會互相影響；之後若有 Pro 額度，建議拆回獨立專案
 > （`npm run rebuild:supabase -- --url=<新URL> --write-env --update-render --all` 可整套換過去）。
 
+### 待審商品核對（`npm run review:pending`）
+
+把 Supabase 裡 `status=pending_review` 的商品輸出成**一頁可核對的清單**，決定完再一次套用：
+
+```bash
+npm run review:pending                          # 產生 review/pending_review.html + .csv
+npm run review:pending -- --open                # 產生後直接開啟
+npm run review:pending -- --apply <匯出的 CSV>   # 套用決定（上架／不採用）
+```
+
+- 為什麼需要：每日搜尋寫入的 `products` **不帶** `category`／`brand`／`regulation_risk`
+  （實測 273 筆待審中 `category` 有值 0 筆），審核者無從判斷合規風險。這支腳本以
+  **商品名稱**（日文＋英文）套規則標記法規類別，並標出高風險者。
+- 介面：商品圖、價格、分數、來源、法規標籤；可按「高法規風險／無價格／低分」篩選；
+  逐筆按「上架／不採用」；按「匯出決定 CSV」帶出決定。
+- `--apply` 走 `lib/publish.ts` 的同一條發布路徑（建立 `published_collections`、
+  商品改 `published`、寫 `published_collection_items`、寫 `audit_logs`）；
+  「不採用」標記為 `status=rejected`，不再出現在待審佇列。
+- 產出放在 `review/`（已 gitignore）。
+
 ### 匯入現場照片商品（`npm run seed:onsite`）
 
 把現場照片萃取的產品主檔轉成 `products` 表可匯入的種子：

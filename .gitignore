@@ -13,3 +13,5 @@ tsconfig.tsbuildinfo
 supabase/rebuild.sql
 # 由 scripts/seed-onsite-products.mjs 產生的商品種子（可隨時重跑產生）
 scripts/onsite-products-seed.json
+# 由 scripts/review-pending.mjs 產生的核對清單（可隨時重跑產生）
+review/
