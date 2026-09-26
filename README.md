@@ -163,6 +163,22 @@ npm run review:pending -- --apply <匯出的 CSV>   # 套用決定（上架／�
   「不採用」標記為 `status=rejected`，不再出現在待審佇列。
 - 產出放在 `review/`（已 gitignore）。
 
+#### 代購排除建議與臺幣換算
+
+- **排除建議**：共用規則放在 `scripts/lib/exclude-rules.mjs`，每條規則可帶「例外樣式」
+  （命中主樣式但同時命中例外者不算排除）。這是以實際資料驗證後補上的，不做例外會誤刪
+  真正在賣的商品，實測誤判例如：`日本酒の化粧水／美容液`（日本酒成分的保養品）、
+  `HARIO ウォータードリッパー`（咖啡濾杯）、`水99% 手口ふき`（濕紙巾）、
+  `UCC アイスコーヒー`（`ice` 誤中）、`ファブリーズ カーフレッシュナー`（`fresh` 誤中）。
+  規則涵蓋：酒類／水類／紙品尿布／生鮮冷凍／全球共通品牌（臺灣也買得到）／大型重量物。
+  為什麼還需要這組規則：`lib/search.ts` 的 `estimate()` 已有 `shouldExclude`，但關鍵字
+  只寫英文／少數漢字，日文名稱（`ビール`、`天然水`）會漏抓。
+- **臺幣標註**：沿用 `lib/graph/pipeline.ts` 與 `listing-draft.ts` 的 `JPY_TWD_RATE`
+  （預設 0.22），在日幣價旁顯示「約 NT$xxx」；CSV 另含 `twd_price` 欄。
+- 核對頁會把命中排除規則的項目**劃掉並預設為「不採用」**，可自行改回上架。
+- `tests/exclude-rules.test.ts` 以實際誤判案例鎖住行為；
+  `scripts/test-review-pending.js` 用 jsdom 實際渲染核對頁（含臺幣顯示與劃掉）。
+
 ### 匯入現場照片商品（`npm run seed:onsite`）
 
 把現場照片萃取的產品主檔轉成 `products` 表可匯入的種子：

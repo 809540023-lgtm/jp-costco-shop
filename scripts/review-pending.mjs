@@ -36,6 +36,8 @@ if (!URL_ || !KEY) { console.error("缺 SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY
 
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
 
+import { classifyExclude, toTwd } from "./lib/exclude-rules.mjs";
+
 // ── 法規分類（只依商品名稱；與 onsite gold set 用同一組規則）─────────────
 const RULES = [
   ["医薬品", /第[1-3]類医薬品|指定第[②1-3]類|医薬品|ロキソニン|パブロン|イブ|葛根湯|アレジオン/],
@@ -100,6 +102,10 @@ button.on{border-color:var(--acc);background:#12283a;color:#cfe6ff}
 main{padding:14px;display:grid;gap:13px;grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
 .card.no{border-color:#7a2d2d;opacity:.55}.card.yes{border-color:#2f6b49}
+.card.excl{border-color:#7a5a2d;background:#1f1c17}
+.card.excl .fn{text-decoration:line-through;text-decoration-color:#ff8a8a;text-decoration-thickness:2px}
+.exclbox{padding:7px 11px;background:#2a2118;color:#ffcf8a;font-size:12px;border-bottom:1px solid #3a3020}
+.twd{color:#9fd8ff;font-weight:600}
 .imgwrap{background:#0c0e11;height:200px;display:flex;align-items:center;justify-content:center}
 .imgwrap img{max-width:100%;max-height:200px;cursor:zoom-in}
 .head{padding:9px 11px;display:flex;gap:7px;align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--line)}
@@ -119,6 +125,7 @@ a{color:var(--acc);font-size:12px}
   <div class="bar"><i id="pb"></i></div><span class="stat" id="st"></span>
   <button id="fTodo" class="on">未決定</button>
   <button id="fHigh">高法規風險</button>
+  <button id="fExcl">建議排除</button>
   <button id="fNoPrice">無價格</button>
   <button id="fLow">低分</button>
   <button id="fAll">全部</button>
@@ -139,6 +146,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const visible=d=>{const s=get(d);
   if(filter==='all')return true; if(filter==='todo')return !s.decision;
   if(filter==='high')return !s.decision&&d.risk==='high';
+  if(filter==='excl')return d.excluded;
   if(filter==='noprice')return !s.decision&&!d.jp_price;
   if(filter==='low')return !s.decision&&(d.score||0)<40; return true;};
 function progress(){const done=DATA.filter(d=>get(d).decision).length;
@@ -147,13 +155,15 @@ function progress(){const done=DATA.filter(d=>get(d).decision).length;
 function render(){progress();list.innerHTML='';
   for(const d of DATA.filter(visible)){
     const s=get(d);const el=document.createElement('section');
-    el.className='card'+(s.decision==='reject'?' no':s.decision==='approve'?' yes':'');
+    el.className='card'+(d.excluded?' excl':'')+(s.decision==='reject'?' no':s.decision==='approve'?' yes':'');
     el.innerHTML=\`
       <div class="imgwrap">\${d.image_url?\`<img loading="lazy" src="\${esc(d.image_url)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'圖片載入失敗',className:'stat'}))">\`:'<div class="stat">無圖片</div>'}</div>
       <div class="head"><span class="fn">\${esc(d.jp_name)}</span></div>
+      \${d.excluded?\`<div class="exclbox">建議排除：\${d.exclude_reasons.map(esc).join('／')}</div>\`:''}
       <div class="body">
         \${d.english_name?\`<div>\${esc(d.english_name)}</div>\`:''}
         <div><span class="price">\${d.jp_price?('¥'+Number(d.jp_price).toLocaleString('ja-JP')):'（無價格）'}</span>
+          \${d.twd?\`<span class="twd">　約 NT$\${d.twd.toLocaleString('en-US')}</span>\`:''}
           \${d.discount_price?\` <span class="stat">原價 ¥\${Number(d.discount_price).toLocaleString('ja-JP')}</span>\`:''}</div>
         <div><span class="tag">分數 \${esc(d.score)}</span> <span class="tag">\${esc(d.evidence_type||'')}</span>
           \${d.rating?\`<span class="tag">★\${esc(d.rating)}（\${esc(d.review_count||0)}）</span>\`:''}
@@ -169,7 +179,7 @@ function render(){progress();list.innerHTML='';
       b.setAttribute('aria-pressed',s.decision===b.dataset.v?'true':'false');
       b.onclick=()=>{const cur=get(d);
         cur.decision=(cur.decision===b.dataset.v)?'':b.dataset.v;save();
-        el.className='card'+(cur.decision==='reject'?' no':cur.decision==='approve'?' yes':'');
+        el.className='card'+(d.excluded?' excl':'')+(cur.decision==='reject'?' no':cur.decision==='approve'?' yes':'');
         el.querySelectorAll('.row button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===cur.decision?'true':'false'));
         progress();if(filter!=='all'&&cur.decision)setTimeout(()=>el.remove(),120);};
     });
@@ -177,18 +187,22 @@ function render(){progress();list.innerHTML='';
     list.appendChild(el);
   }}
 document.getElementById('exp').onclick=()=>{
-  const lines=['id,decision,jp_name,jp_price,score,evidence_type,regulation_flags,image_url,costco_url'];
+  const lines=['id,decision,jp_name,jp_price,twd_price,score,evidence_type,regulation_flags,exclude_reasons,image_url,costco_url'];
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   for(const d of DATA){const s=get(d);
-    lines.push([d.id,s.decision||'',d.jp_name,d.jp_price,d.score,d.evidence_type,d.flags.join('|'),d.image_url,d.costco_url].map(q).join(','));}
+    lines.push([d.id,s.decision||'',d.jp_name,d.jp_price,d.twd,d.score,d.evidence_type,d.flags.join('|'),d.exclude_reasons.join('|'),d.image_url,d.costco_url].map(q).join(','));}
   const blob=new Blob(['\\ufeff'+lines.join('\\r\\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='pending_decisions.csv';a.click();};
 document.getElementById('clr').onclick=()=>{if(confirm('清除本機決定？（請先匯出）')){state={};save();render();}};
-for(const [id,f] of [['fTodo','todo'],['fHigh','high'],['fNoPrice','noprice'],['fLow','low'],['fAll','all']]){
+for(const [id,f] of [['fTodo','todo'],['fHigh','high'],['fExcl','excl'],['fNoPrice','noprice'],['fLow','low'],['fAll','all']]){
   document.getElementById(id).onclick=()=>{filter=f;render();
     document.querySelectorAll('header button').forEach(b=>b.classList.remove('on'));
     document.getElementById(id).classList.add('on');};}
+// 建議排除的項目預先標為「不採用」，使用者可自行改成上架
+let seeded=false;
+for(const d of DATA){if(d.excluded&&!get(d).decision){get(d).decision='reject';get(d).auto=true;seeded=true;}}
+if(seeded)save();
 render();
 </script></body></html>`;
 }
@@ -198,10 +212,13 @@ async function doExport(open) {
   const rows = await fetchPending();
   const items = rows.map((p) => {
     const c = classify(p);
-    return { ...p, flags: c.flags, risk: c.risk };
+    const e = classifyExclude(p);
+    return { ...p, flags: c.flags, risk: c.risk, excluded: e.excluded, exclude_reasons: e.reasons,
+             twd: toTwd(p.jp_price) };
   });
   const high = items.filter((i) => i.risk === "high").length;
   const noPrice = items.filter((i) => !i.jp_price).length;
+  const excluded = items.filter((i) => i.excluded);
 
   fs.mkdirSync(OUTDIR, { recursive: true });
   const html = buildHtml(items);
@@ -231,6 +248,13 @@ async function doExport(open) {
   console.log();
   const risk = items.reduce((a, i) => (a[i.risk] = (a[i.risk] || 0) + 1, a), {});
   console.log(`  法規風險分布    : 高 ${risk.high || 0}｜中 ${risk.medium || 0}｜低 ${risk.low || 0}`);
+  console.log(`  建議排除        : ${excluded.length} 筆（已預設為「不採用」，可自行改回）`);
+  const byReason = excluded.reduce((a, i) => {
+    for (const r of i.exclude_reasons) a[r] = (a[r] || 0) + 1; return a;
+  }, {});
+  for (const [r, n] of Object.entries(byReason).sort((x, y) => y[1] - x[1])) {
+    console.log(`      ${r}：${n}`);
+  }
   const byEv = items.reduce((a, i) => (a[i.evidence_type] = (a[i.evidence_type] || 0) + 1, a), {});
   console.log(`  來源分布        : ${Object.entries(byEv).map(([k, v]) => `${k} ${v}`).join("｜")}`);
 
