@@ -11,3 +11,5 @@ tsconfig.tsbuildinfo
 
 # 由 scripts/rebuild-supabase.mjs 產生的重建 SQL（可隨時重跑產生）
 supabase/rebuild.sql
+# 由 scripts/seed-onsite-products.mjs 產生的商品種子（可隨時重跑產生）
+scripts/onsite-products-seed.json

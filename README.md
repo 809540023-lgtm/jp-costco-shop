@@ -88,6 +88,28 @@ npm run rebuild:supabase -- --check                    # 只跑驗收檢查表
   同時列出所有 `sync: false`（需在 Render Dashboard 手動設定）的變數，並標示哪些本機 `.env` 已有值。
 - `--url` **只影響本次執行、不寫 `.env`**，避免把新 URL 配上舊金鑰造成不一致；腳本會印出該改哪三行。
 
+### 匯入現場照片商品（`npm run seed:onsite`）
+
+把現場照片萃取的產品主檔轉成 `products` 表可匯入的種子：
+
+```bash
+npm run seed:onsite                     # 產生 scripts/onsite-products-seed.json 並顯示摘要
+npm run seed:onsite -- --post           # 產生後直接 upsert 進 Supabase
+npm run seed:onsite -- --in=<goldset 路徑> --out=<輸出路徑>
+```
+
+- 來源為 repo 外的 gold set 目錄（預設 `~/Desktop/好市多２０２６０９-goldset`），內含
+  `product_master.json`（跨境／法規判定）與 `official_matches.json`（官方目錄比對）。
+- 依 `AGENTS.md` 硬規則處理：
+  - `status` 一律 `pending_review`，**不直接上架**（需人工審核後才發布）
+  - 缺值欄位**一律省略**，不寫 `null`
+  - **不寫 `discount_price`**：現場價牌未經人工 VERIFIED，單一價格不構成特價
+  - **不推估** `taiwan_suggested_price`／`logistics_cost`／`landed_cost`
+  - `regulation_risk` **只用官方商品名判定**，不採用照片 OCR 文字
+    （OCR 會混入鄰近貨架商品的字，曾把行李箱誤標成「食品」；無官方對應時標示「未確認」）
+  - 不寫 GPS、照片檔名、Drive 連結（此類清冊資料只進私人 Queue）
+- 產出檔已 gitignore；`--post` 以 50 筆一批 upsert，以 `id` 去重。
+
 ## 主要頁面
 | 路徑 | 功能 |
 |------|------|
