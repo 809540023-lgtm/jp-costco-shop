@@ -51,6 +51,7 @@
 npm run dev        # 開發
 npm run build      # 建置
 npm run check:supabase # 資料層健檢（DNS／金鑰／資料表；異常時 exit 1）
+npm run rebuild:supabase # 一鍵重建包（SQL 順序＋種子＋Render 清單＋驗收；詳見 README）
 npm test           # 執行測試
 
 # 手動觸發 cron（單一 Supabase 路徑：打 API route，不再有 SQLite 分支）

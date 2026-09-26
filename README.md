@@ -65,6 +65,29 @@ node scripts/check-supabase.js --json   # 給自動化用的 JSON 輸出（異�
 4. 重新匯入資料：`node scripts/seed-supabase.js`（已發布商品快照）、`node scripts/import-livestream-signal.js ...`。
 5. 私有 bucket 需重建：`costco-onsite-media`（**不可**設 public policy）。
 
+### 一鍵重建（`npm run rebuild:supabase`）
+
+上述步驟 2～4 已腳本化，會依序產出 SQL 套用順序、種子指令、Render 環境變數清單與驗收檢查表：
+
+```bash
+npm run rebuild:supabase                              # 唯讀：檢查現況＋產出 supabase/rebuild.sql
+npm run rebuild:supabase -- --all                      # 套 schema → 灌種子 → 驗收
+npm run rebuild:supabase -- --url=<新URL> --update-render --all
+npm run rebuild:supabase -- --check                    # 只跑驗收檢查表
+```
+
+- **SQL 套用順序**：`supabase/schema.sql` → `supabase/migrations/*.sql`（依檔名時間）。
+  全部為 `if not exists`，可重複執行；串接後輸出 `supabase/rebuild.sql`（已 gitignore）。
+- **套用路徑自動挑選**：`psql`＋`SUPABASE_DB_URL`（最穩）→ Supabase Management API＋`SUPABASE_ACCESS_TOKEN`
+  → 皆無則提示把 `rebuild.sql` 貼進 Dashboard SQL Editor。
+  （Supabase 的 PostgREST 只做資料 CRUD，**不能執行 DDL**，所以不能只用 service_role key 建表。）
+- **靜態驗證**：腳本會先檢查 28 張表是否齊全、有沒有指向不存在表格的 `alter table`／`create index`
+  （`if exists` 會靜默跳過，是重建時最容易漏掉的地方）。
+- **Render 檢查**：`render.yaml` 內硬編碼的 `SUPABASE_URL` 一旦指向舊專案就會被標出並附行號；
+  `--update-render --url=<新URL>` 可一次換掉（缺 `--url` 會擋下，避免換成空值）。
+  同時列出所有 `sync: false`（需在 Render Dashboard 手動設定）的變數，並標示哪些本機 `.env` 已有值。
+- `--url` **只影響本次執行、不寫 `.env`**，避免把新 URL 配上舊金鑰造成不一致；腳本會印出該改哪三行。
+
 ## 主要頁面
 | 路徑 | 功能 |
 |------|------|

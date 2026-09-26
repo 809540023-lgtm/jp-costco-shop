@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "check:supabase": "node scripts/check-supabase.js",
+    "rebuild:supabase": "node scripts/rebuild-supabase.mjs",
     "search:run": "node scripts/run-cron.mjs run-search",
     "agents:run": "node scripts/run-cron.mjs run-agents",
     "publish:run": "node scripts/run-cron.mjs publish-scheduled",

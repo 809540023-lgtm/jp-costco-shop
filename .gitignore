@@ -8,3 +8,6 @@ data/
 .DS_Store
 *.log
 tsconfig.tsbuildinfo
+
+# 由 scripts/rebuild-supabase.mjs 產生的重建 SQL（可隨時重跑產生）
+supabase/rebuild.sql
