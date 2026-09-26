@@ -16,7 +16,7 @@ services:
       - key: SITE_URL
         value: https://jp-costco-shop.onrender.com
       - key: SUPABASE_URL
-        value: https://ielurceqyovpsnfwtbek.supabase.co
+        value: https://ktqupvrefxejjjsacbqd.supabase.co
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -59,7 +59,7 @@ services:
       - key: CRON_SECRET
         sync: false
       - key: SUPABASE_URL
-        value: https://ielurceqyovpsnfwtbek.supabase.co
+        value: https://ktqupvrefxejjjsacbqd.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: YOUTUBE_API_KEY
