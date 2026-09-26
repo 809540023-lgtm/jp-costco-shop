@@ -72,7 +72,12 @@ function estimate(raw: RawProduct): RankingInput & {
 
 // 只在「有值」時才寫入這些欄位（開放給測試）。某日來源失敗時，既有價格／評分／圖片不會被
 // 覆蓋成 null（PostgREST upsert 只更新 payload 內的欄位）。
-export function buildProductRow(raw: RawProduct, breakdownTotal: number, batchId: string): Record<string, unknown> {
+export function buildProductRow(
+  raw: RawProduct,
+  breakdownTotal: number,
+  batchId: string,
+  opts: { keepStatus?: boolean } = {}
+): Record<string, unknown> {
   const row: Record<string, unknown> = {
     id: raw.id,
     jp_name: raw.jpName,
@@ -83,6 +88,9 @@ export function buildProductRow(raw: RawProduct, breakdownTotal: number, batchId
     search_batch_id: batchId,
     updated_at: new Date().toISOString()
   };
+  // 已發布商品不覆寫 status：upsert 會整列覆蓋，把 published 寫成 pending_review
+  // 等於讓商品從商店消失（依「網站繼續顯示上一期已發布商品」原則，不得發生）。
+  if (opts.keepStatus) delete row.status;
   const optional: Array<[string, unknown]> = [
     ["brand", raw.brand],
     ["category", raw.category],
@@ -125,6 +133,13 @@ export async function runDailySearch(rawProducts: RawProduct[]): Promise<{ batch
     "建立搜尋批次失敗"
   );
 
+  // 先取出目前已發布的 id：這些商品即使被重新搜到，也不得被降級成待審核。
+  const publishedIds = new Set<string>();
+  {
+    const { data } = await supabase.from("products").select("id").eq("status", "published");
+    for (const r of (data || []) as Array<{ id: string }>) publishedIds.add(r.id);
+  }
+
   let kept = 0;
   try {
     for (const raw of rawProducts) {
@@ -133,7 +148,9 @@ export async function runDailySearch(rawProducts: RawProduct[]): Promise<{ batch
       const breakdown = scoreProduct(input);
       if (breakdown.total < 20) continue; // 過低分數不列入
       assertOk(
-        await supabase.from("products").upsert(buildProductRow(raw, breakdown.total, batchId), { onConflict: "id" }),
+        await supabase
+          .from("products")
+          .upsert(buildProductRow(raw, breakdown.total, batchId, { keepStatus: publishedIds.has(raw.id) }), { onConflict: "id" }),
         `寫入商品失敗（${raw.id}）`
       );
       assertOk(

@@ -60,6 +60,19 @@ describe("search buildProductRow", () => {
     expect(row.japan_exclusive_note).toBe("官方標籤：Made In Japan");
   });
 
+  it("keepStatus：已發布商品不被降級（不寫入 status 欄位）", () => {
+    const row = buildProductRow(fullProduct, 72, "b", { keepStatus: true });
+    // upsert 只更新 payload 內的欄位；省略 status 才不會把 published 蓋成 pending_review
+    expect("status" in row).toBe(false);
+    expect(row.jp_name).toBe(fullProduct.jpName);
+    expect(row.score).toBe(72);
+  });
+
+  it("未指定 keepStatus 時仍為待審核（新商品一律先審）", () => {
+    const row = buildProductRow(fullProduct, 72, "b");
+    expect(row.status).toBe("pending_review");
+  });
+
   it("HTML 備援商品不覆蓋既有價格／評分（缺值一律省略）", () => {
     const row = buildProductRow(linkOnly, 30, "b");
     expect(row.jp_price).toBeUndefined();

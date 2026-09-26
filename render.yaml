@@ -2,7 +2,9 @@
 # - Web Service：購物網站
 # - Cron Job：每日 08:00 (Asia/Taipei) 執行搜尋
 #   注意：Render 的 cron schedule 是 UTC，故 08:00 Taipei = 00:00 UTC（見下面 schedule）。
-#   這兩個 cron 目前是以 Render API 建立（非 Blueprint 同步），調整時請同步更新。、08:30 執行商品智慧管線
+#   這兩個 cron 目前是以 Render API 建立（非 Blueprint 同步），調整時請同步更新。
+#   startCommand 必須用單引號包住：字串內含「冒號+空格」(${...}: $CRON_SECRET)，
+#   未加引號會讓整份 render.yaml 變成無效 YAML（過去即因此導致 cron 從未被建立）。、08:30 執行商品智慧管線
 # 資料層為 Supabase PostgreSQL（Render 免費層檔案系統為暫存，不可放任何資料庫檔案）。
 
 services:
@@ -26,7 +28,7 @@ services:
       - key: GOOGLE_DRIVE_API_KEY
         sync: false
       - key: COSTCO_DRIVE_FOLDER_ID
-        value: 1_Ryc7z4Et-M5lRA0q96gIUfYPDX8TelB
+        value: 1swV4N_jfOxt7Cku2gH0Kft6TUp3nc__e   # 原 1_Ryc7z4Et-…（日本好市多）已空，改指向實際有 190 個檔案的資料夾
       - key: LIVE_STREAM_URL
         sync: false
       - key: LINE_PHASE
@@ -47,7 +49,7 @@ services:
       - key: CRON_SECRET
         sync: false
     buildCommand: npm install
-    startCommand: curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-search"
+    startCommand: 'curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-search"'
 
   # 3.0：每日商品智慧管線（雷達 → 評分 → AI 採購決策）
   - type: cron
@@ -71,4 +73,4 @@ services:
       - key: ASTRA_API_KEY
         sync: false
     buildCommand: npm install
-    startCommand: curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-agents"
+    startCommand: 'curl -fsS -H "x-cron-secret: $CRON_SECRET" "$SITE_URL/api/cron/run-agents"'
