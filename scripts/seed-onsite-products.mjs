@@ -171,24 +171,56 @@ if (args.includes("--post")) {
     process.exit(1);
   }
   console.log(`\n寫入 Supabase（${finalRows.length} 筆，upsert on id）…`);
-  let ok = 0;
-  for (let i = 0; i < finalRows.length; i += 50) {
-    const chunk = finalRows.slice(i, i + 50);
-    const res = await fetch(`${url}/rest/v1/products`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Prefer: "resolution=merge-duplicates,return=minimal"
-      },
-      body: JSON.stringify(chunk)
+
+  // 不降級已發布商品：upsert 會整列覆蓋，若把已 published 的商品寫成
+  // pending_review，等於讓它從商店消失。既有 published 的列不送 status。
+  let publishedIds = new Set();
+  try {
+    const r = await fetch(`${url}/rest/v1/products?select=id&status=eq.published`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
     });
-    if (!res.ok) {
-      console.error(`❌ 第 ${i / 50 + 1} 批失敗：${res.status} ${(await res.text()).slice(0, 300)}`);
-      process.exit(1);
-    }
-    ok += chunk.length;
+    if (r.ok) publishedIds = new Set((await r.json()).map((x) => x.id));
+  } catch { /* 取不到就維持原行為 */ }
+  const skippedStatus = finalRows.filter((r) => publishedIds.has(r.id)).length;
+  if (skippedStatus) {
+    console.log(`  已發布商品 ${skippedStatus} 筆：不改動 status（避免從商店消失）`);
   }
-  console.log(`✅ 已寫入 ${ok} 筆（status=pending_review，需人工審核後才會上架）`);
+
+  const payloadRows = finalRows.map((r) => {
+    if (!publishedIds.has(r.id)) return r;
+    const { status, ...rest } = r;
+    return rest;
+  });
+
+  // PostgREST 要求同一批的每筆物件欄位必須完全相同（PGRST102）。
+  // 但依 AGENTS.md「缺值欄位一律省略」，各筆欄位本來就不同；
+  // 因此依「欄位組合」分組送出，不為了湊格式而補 null（補 null 會覆蓋既有值）。
+  const byShape = new Map();
+  for (const r of payloadRows) {
+    const sig = Object.keys(r).sort().join(",");
+    if (!byShape.has(sig)) byShape.set(sig, []);
+    byShape.get(sig).push(r);
+  }
+  let ok = 0;
+  for (const [sig, group] of byShape) {
+    for (let i = 0; i < group.length; i += 50) {
+      const chunk = group.slice(i, i + 50);
+      const res = await fetch(`${url}/rest/v1/products`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Prefer: "resolution=merge-duplicates,return=minimal"
+        },
+        body: JSON.stringify(chunk)
+      });
+      if (!res.ok) {
+        console.error(`❌ 欄位組合 [${sig.slice(0, 60)}…] 第 ${i / 50 + 1} 批失敗：${res.status} ${(await res.text()).slice(0, 300)}`);
+        process.exit(1);
+      }
+      ok += chunk.length;
+    }
+  }
+  console.log(`✅ 已寫入 ${ok} 筆（分 ${byShape.size} 種欄位組合；status=pending_review，需人工審核後才會上架）`);
 }
