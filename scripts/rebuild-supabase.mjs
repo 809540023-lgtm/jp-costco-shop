@@ -182,6 +182,21 @@ async function checkTables() {
   return { ok: missing.length === 0, tables: names, present, missing, detail: `${present.length}/${names.length} 張表可用` };
 }
 
+async function checkBucket() {
+  // bucket 由 migration 建立（public=false）；這裡驗證實際狀態，避免被改成公開。
+  if (!SERVICE_KEY || !host) return { ok: false, detail: "缺 service key" };
+  try {
+    const res = await fetch(`${URL_}/storage/v1/bucket/costco-onsite-media`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
+    });
+    if (!res.ok) return { ok: false, detail: `查詢失敗 HTTP ${res.status}` };
+    const b = await res.json();
+    return { ok: b.public === false, detail: b.public === false ? "存在且為私有（public=false）" : "⚠️ 存在但設為公開！" };
+  } catch (e) {
+    return { ok: false, detail: e.message };
+  }
+}
+
 // ── Render 檢查 ────────────────────────────────────────────────────────
 function renderAudit() {
   const p = path.join(ROOT, "render.yaml");
@@ -356,7 +371,9 @@ if (has("--check") || has("--all")) {
   const liveOk = live === 200;
   console.log(`  ${liveOk ? "✅" : "❌"} 線上 /costco/deals HTTP ${live || "(連不上)"}`);
 
-  console.log("  ⬜ 私有 bucket costco-onsite-media 已建立，且未設 public policy");
+  const bucket = d.ok ? await checkBucket() : null;
+  console.log(`  ${bucket === null ? "⏭" : bucket.ok ? "✅" : "❌"} 私有 bucket costco-onsite-media：${bucket ? bucket.detail : "（DNS 失敗，略）"}`);
+
   console.log("  ⬜ Render 環境變數已更新（含 render.yaml 的硬編碼 URL）");
   console.log("  ⬜ .env 的 SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY 已換成新專案（三者必須同專案）");
   console.log("  ⬜ 種子資料已匯入（npm run rebuild:supabase -- --seed）");
