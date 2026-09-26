@@ -94,7 +94,12 @@ export async function syncCostcoJpObservations(
   const result: ObservationSyncResult = {
     considered: products.length, matched: 0, priceObservations: 0, reviewSnapshots: 0, skippedNoEntity: 0
   };
-  if (!entities.length) return result;
+  // 沒有任何實體時，全部商品都是「找不到對應實體」；若這裡直接回 0，
+  // 操作端會誤以為 300 筆都對上了（實際上 0 筆有觀測）。
+  if (!entities.length) {
+    result.skippedNoEntity = products.length;
+    return result;
+  }
 
   const prelim = buildObservationPayloads(products, entities, observedAt);
   result.matched = prelim.matched;

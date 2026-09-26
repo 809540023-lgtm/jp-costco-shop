@@ -114,6 +114,35 @@ npm run rebuild:supabase -- --url=<新URL> --write-env --all
 - 注意：能執行 SQL／讀金鑰，不代表能建立專案 —— `POST /v1/projects` 需要組織層權限，
   403 時請在 Dashboard 建專案（建議選 Pro 組織；免費層閒置會被暫停，本專案曾因此失去資料庫）。
 
+### 重建後驗收清單（2026-09-26 實際跑過）
+
+| # | 檢查 | 指令 | 預期結果 |
+|---|---|---|---|
+| 1 | 資料層 | `npm run check:supabase` | DNS ✓／REST ✓／資料表 28/28 →「資料層正常」 |
+| 2 | 完整驗收表 | `npm run rebuild:supabase -- --check` | 含 `/costco/deals` 200 與私有 bucket 存在（`public=false`） |
+| 3 | 金鑰同專案 | 用 anon 與 service_role 各讀一次 `products` | 兩者都 HTTP 200；**anon 401 就是混到舊專案金鑰** |
+| 4 | 每日搜尋 | `npm run search:run` | HTTP 200、`sources` 至少一個 `ok: true`、`count` > 0 |
+| 5 | 前台商品 | `curl -s localhost:3000/costco \| grep -o '/costco/product/' \| wc -l` | 等於 `status='published'` 的筆數 |
+| 6 | 種子資料 | `products` 與 `comparison_prices` 筆數 | 由 `node scripts/seed-supabase.js` 決定 |
+| 7 | 3.0 管線 | `npm run agents:run` | HTTP 200；無 `YOUTUBE_API_KEY` 時雷達跳過、`evaluated` 為 0 屬正常 |
+
+> `published_collections` 重建後是 0 筆沒關係：`getPublishedProducts()` 沒有指定 collection 時
+> 直接讀 `products`（`status='published'`），前台照樣列出商品；發布流程（`lib/publish.ts`）下次發布時會補上 collection。
+
+**重建後仍是空的表（正常，但要有來源才會長出來）**
+
+| 表 | 為什麼空 | 怎麼填 |
+|---|---|---|
+| `product_entity` | **只有競業直播帶貨清冊匯入時才會建立**（`scripts/import-livestream-signal.js`、`/api/admin/import-signal`）；2.0 已發布商品不會自動轉成實體 | 需要清冊檔（`~/costco-analysis/products_part*.md`，**repo 外、本機與外接碟目前都沒有**） |
+| `price_observation` / `review_snapshot` | 觀測要先匹配到實體，沒有實體一律跳過（`skippedNoEntity` 會等於商品數） | 先有 `product_entity`，隔天 cron 自動寫入 |
+| `score_snapshot` / `content_draft` | Agent 4／5 只處理通過門檻的候選實體 | 同上，之後跑 `npm run agents:run` |
+| `weekly_store_deals`、`costco_photo_*` | 現場照片 Queue 與 Drive 清冊不隨重建還原（原始檔仍在 Google Drive） | 後台 `/admin/onsite` 重新 Drive Sync |
+| `orders` / `customs_profiles` | 訂單是歷史資料，快照只含商品 | **無法復原**（隨舊專案一起消失，重建前請確認沒有未出貨訂單） |
+
+> ⚠️ 目前正式資料層與 **`fb-equipment-radar`（另一個專案）共用同一個 Supabase 專案**（`ktqupvrefxejjjsacbqd`）。
+> 表名不衝突，但金鑰、用量、備份與資料庫事件會互相影響；之後若有 Pro 額度，建議拆回獨立專案
+> （`npm run rebuild:supabase -- --url=<新URL> --write-env --update-render --all` 可整套換過去）。
+
 ### 匯入現場照片商品（`npm run seed:onsite`）
 
 把現場照片萃取的產品主檔轉成 `products` 表可匯入的種子：

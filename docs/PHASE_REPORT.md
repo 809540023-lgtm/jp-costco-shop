@@ -101,11 +101,19 @@ supabase-js 在網路／權限失敗時是「回傳 `error` 而不丟錯」，�
 - `npm run search:run` 對本機 dev server 實測：錯誤 secret → 401；連不到伺服器 → 明確提示；官方 API 擷取 300 筆正常。
 - 全庫掃描確認無任何 `node:sqlite`／`lib/db`／`lib/schema.sql` 殘留引用。
 
-**⚠️ 現況（非本次修改造成）**
-`npm run check:supabase` 顯示 **DNS ENOTFOUND：`ielurceqyovpsnfwtbek.supabase.co` 不存在**（專案已刪除或改名），
-資料層目前不可用 —— 前台商品／現場特價／後台都會讀不到資料，`search:run`／`compare:sync` 會正確回 500 並提示。
-復原步驟見 README「資料層健檢與復原」（`compare:sync` 的寫入段落需待資料層恢復後才能完整驗證）。
+**⚠️ 診斷結果與後續（2026-09-26 追記）**
+`npm run check:supabase` 當時顯示 **DNS ENOTFOUND：`ielurceqyovpsnfwtbek.supabase.co` 不存在**。
+管理 API 查證：該帳號底下只剩 `fb-equipment-radar`（`ktqupvrefxejjjsacbqd`），**Costco 專案已從帳號消失**
+（本機 DNS 正常、`supabase.co` 可解析，排除本機網路問題），資料層確認不可用。
+後續以 `scripts/rebuild-supabase.mjs` 重建於 `ktqupvrefxejjjsacbqd`（28/28 表、私有 bucket 齊全），
+`.env` 與 `render.yaml` 已同步，並實測通過：`search:run`／`agents:run` 皆 HTTP 200、前台 90 筆商品。
+重建後的完整驗收清單與「仍是空的表」說明見 README「重建後驗收清單」。
+
+**強化（同日追加）：觀測計數不再誤導（`lib/graph/observations.ts`）**
+沒有任何 `product_entity` 時，`syncCostcoJpObservations` 原本回 `skippedNoEntity: 0`
+（實測 300 筆全部沒對上，卻顯示 0 筆被跳過）。改為回 `products.length`，`tests/search-batch.test.ts` 增為 4 項。
 
 ### 待辦（3.0 後續）
 - `YOUTUBE_API_KEY` 未設定 → Agent 1 雷達會自動跳過；要實測需補金鑰。
-- 競業直播清冊匯入（`scripts/import-livestream-signal.js`）尚未在本機跑過完整一輪。
+- **3.0 Graph 缺少 bootstrap**：`product_entity` 目前只有競業直播清冊會建立，2.0 已發布商品不會自動轉成實體，
+  因此重建後（或全新環境）Agent 1–5 無事可做；清冊檔（`~/costco-analysis/products_part*.md`）目前不在本機與外接碟。
