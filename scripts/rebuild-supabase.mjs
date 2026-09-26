@@ -26,9 +26,9 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
-const argValue = (k) => {
+const argValue = (k, d = "") => {
   const m = args.find((a) => a.startsWith(`${k}=`));
-  return m ? m.slice(k.length + 1) : "";
+  return m ? m.slice(k.length + 1) : d;
 };
 
 // ── 環境 ───────────────────────────────────────────────────────────────
@@ -164,7 +164,19 @@ async function applyWithApi(files) {
       headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query: fs.readFileSync(s.file, "utf8") })
     });
-    if (!res.ok) throw new Error(`Management API 失敗：${res.status} ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 300);
+      // 唯讀交易代表 token 沒有 DDL 權限（能 SELECT、能讀金鑰，但建不了表）
+      if (/read-only transaction/i.test(body)) {
+        throw new Error(
+          "Management API 的 SQL 為唯讀：這組 SUPABASE_ACCESS_TOKEN 沒有建立資料表的權限。\n" +
+          "     可行做法（擇一）：\n" +
+          "     A) 把 supabase/rebuild.sql 貼進 Dashboard → SQL Editor 執行（最單純，69 條語句一次跑完）\n" +
+          "     B) 在 .env 設 SUPABASE_DB_URL=<Dashboard → Settings → Database → Connection string> 後重跑（需 psql）"
+        );
+      }
+      throw new Error(`Management API 失敗：${res.status} ${body}`);
+    }
     console.log("OK");
   }
 }
@@ -304,7 +316,7 @@ console.log(`  DB 連線字串：${mask(DB_URL)}`);
 console.log(`  存取權杖  ：${mask(ACCESS_TOKEN)}`);
 
 // --url 只影響本次執行（避免把新 URL 配上舊金鑰寫進 .env 造成不一致）
-if (overrideUrl) {
+if (overrideUrl && !has("--write-env")) {
   const envFile = path.join(ROOT, ".env");
   const current = fs.existsSync(envFile)
     ? (fs.readFileSync(envFile, "utf8").match(/^SUPABASE_URL=(.*)$/m) || [])[1]
