@@ -476,8 +476,22 @@ if (has("--check") || has("--all")) {
   const bucket = d.ok ? await checkBucket() : null;
   console.log(`  ${bucket === null ? "⏭" : bucket.ok ? "✅" : "❌"} 私有 bucket costco-onsite-media：${bucket ? bucket.detail : "（DNS 失敗，略）"}`);
 
-  console.log("  ⬜ Render 環境變數已更新（含 render.yaml 的硬編碼 URL）");
-  console.log("  ⬜ .env 的 SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY 已換成新專案（三者必須同專案）");
+  // .env 三值是否同屬目標專案（最常見的重建失誤，可直接驗證）
+  const envPath = path.join(ROOT, ".env");
+  let envOk = false, envDetail = "找不到 .env";
+  if (fs.existsSync(envPath)) {
+    const kv = {};
+    for (const l of fs.readFileSync(envPath, "utf8").split("\n")) {
+      const m = l.match(/^([A-Za-z0-9_]+)=(.*)$/);
+      if (m) kv[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    }
+    const sameUrl = kv.SUPABASE_URL === URL_;
+    const keysOk = (kv.SUPABASE_ANON_KEY || "").length > 100 && (kv.SUPABASE_SERVICE_ROLE_KEY || "").length > 100;
+    envOk = sameUrl && keysOk;
+    envDetail = sameUrl ? (keysOk ? "URL 與金鑰皆為目標專案" : "金鑰為空或過短") : "URL 與目標不符";
+  }
+  console.log(`  ${envOk ? "✅" : "❌"} .env 三值同屬目標專案：${envDetail}`);
+  console.log("  ⬜ Render 環境變數需在 Dashboard 或 Render API 確認（腳本不代為修改）");
   console.log("  ⬜ 種子資料已匯入（npm run rebuild:supabase -- --seed）");
 } else if (!has("--apply") && !has("--seed")) {
   console.log("\n【後續步驟】");
