@@ -88,6 +88,21 @@ npm run rebuild:supabase -- --check                    # 只跑驗收檢查表
   同時列出所有 `sync: false`（需在 Render Dashboard 手動設定）的變數，並標示哪些本機 `.env` 已有值。
 - `--url` **只影響本次執行、不寫 `.env`**，避免把新 URL 配上舊金鑰造成不一致；腳本會印出該改哪三行。
 
+#### 自動取得金鑰（`--write-env`）
+
+新 URL 配上舊金鑰是最常見的重建失誤。若 `SUPABASE_ACCESS_TOKEN` 對新專案有權限，
+可讓腳本用 Management API 取回金鑰並**整組寫入** `.env`（三個值同專案，不會不一致）：
+
+```bash
+npm run rebuild:supabase -- --url=<新URL> --write-env --all
+```
+
+- 金鑰來源：`GET /v1/projects/{ref}/api-keys`（取 `anon` 與 `service_role`）。
+- Token 權限不足時會提示手動填 `.env`，不會寫入半套。
+- 測試或想寫到別的檔案時用 `--env-path=<路徑>`（**不可用 `--env-file`**，那是 Node 自己的參數會被吃掉）。
+- 注意：能執行 SQL／讀金鑰，不代表能建立專案 —— `POST /v1/projects` 需要組織層權限，
+  403 時請在 Dashboard 建專案（建議選 Pro 組織；免費層閒置會被暫停，本專案曾因此失去資料庫）。
+
 ### 匯入現場照片商品（`npm run seed:onsite`）
 
 把現場照片萃取的產品主檔轉成 `products` 表可匯入的種子：

@@ -9,6 +9,8 @@
 //   node scripts/rebuild-supabase.mjs --all                 # apply → seed → check
 //   node scripts/rebuild-supabase.mjs --url=https://xxx.supabase.co   # 指定新專案（只影響本次執行，不寫檔）
 //   node scripts/rebuild-supabase.mjs --update-render --url=<新URL>    # 把 render.yaml 內硬編碼的舊 URL 換掉
+//   node scripts/rebuild-supabase.mjs --write-env --url=<新URL>         # 用 Management API 取金鑰並整組寫入 .env
+//   node scripts/rebuild-supabase.mjs --env-path=<路徑>                # 指定要寫入的 env 檔（預設 .env；注意不可用 --env-file，那是 Node 自己的參數）
 //
 // 為什麼不能用 PostgREST 建表：Supabase 的 REST（PostgREST）只做資料 CRUD，不能執行 DDL。
 // 因此這支腳本提供三條路徑，自動挑可行的：
@@ -41,15 +43,44 @@ function loadEnv() {
 loadEnv();
 const overrideUrl = argValue("--url");
 if (overrideUrl) process.env.SUPABASE_URL = overrideUrl;
+const ENV_FILE = argValue("--env-path", path.join(ROOT, ".env"));
 
 const URL_ = process.env.SUPABASE_URL || "";
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+let SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DB_URL = process.env.SUPABASE_DB_URL || "";
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN || "";
 
 const mask = (v) => (!v ? "(未設定)" : `${v.slice(0, 6)}… (${v.length} 字)`);
 const host = URL_ ? new URL(URL_).host : "";
 const projectRef = host ? host.split(".")[0] : "";
+
+// ── 0. 自動取得新專案金鑰並寫入 .env（--write-env）────────────────────
+// 新 URL 配上舊金鑰是最常見的重建失誤；這裡一次取回並整組寫入，確保三者同專案。
+if (has("--write-env")) {
+  console.log("\n【0】取得新專案金鑰並寫入 " + ENV_FILE);
+  if (!overrideUrl) {
+    console.log("  ❌ 需同時指定 --url=<新專案URL>");
+  } else if (!ACCESS_TOKEN) {
+    console.log("  ❌ 缺 SUPABASE_ACCESS_TOKEN，無法透過 Management API 取金鑰");
+    console.log("     → 或手動把 anon／service_role 填進 .env");
+  } else if (!projectRef) {
+    console.log("  ❌ 無法從 URL 判定專案 ref");
+  } else {
+    const k = await fetchKeys(projectRef);
+    if (!k.ok) {
+      console.log(`  ❌ 取金鑰失敗：${k.detail}`);
+      console.log("     → token 可能沒有這個專案的權限，請手動填 .env 的三個值");
+    } else {
+      const wrote = writeEnvFile(ENV_FILE, {
+        SUPABASE_URL: overrideUrl,
+        SUPABASE_ANON_KEY: k.anon,
+        SUPABASE_SERVICE_ROLE_KEY: k.service
+      });
+      SERVICE_KEY = k.service;
+      console.log(`  ✅ 已寫入 ${wrote.join("／")}（anon ${k.anon.length} 字、service_role ${k.service.length} 字）`);
+    }
+  }
+}
 
 // ── SQL 套用順序 ───────────────────────────────────────────────────────
 // 順序即依賴順序：先 2.0 既有表，再依檔名時間排序的 3.0 migrations。
@@ -195,6 +226,40 @@ async function checkBucket() {
   } catch (e) {
     return { ok: false, detail: e.message };
   }
+}
+
+// ── 從 Management API 取得專案金鑰與寫入 .env ──────────────────────────
+// 需要 SUPABASE_ACCESS_TOKEN，且該 token 對目標專案有存取權。
+async function fetchKeys(ref) {
+  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/api-keys?reveal=false`, {
+    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }
+  });
+  if (!res.ok) return { ok: false, detail: `HTTP ${res.status}` };
+  const d = await res.json();
+  const pick = (id) => (d.find((k) => k.id === id) || {}).api_key;
+  const anon = pick("anon");
+  const service = pick("service_role");
+  if (!anon || !service) return { ok: false, detail: "回應中找不到 anon／service_role" };
+  return { ok: true, anon, service };
+}
+
+/** 一次寫入三個值，避免新 URL 配舊金鑰的不一致狀態 */
+function writeEnvFile(file, values) {
+  const lines = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n") : [];
+  const done = new Set();
+  const out = lines.map((l) => {
+    const m = l.match(/^([A-Za-z0-9_]+)=/);
+    if (m && values[m[1]] !== undefined) {
+      done.add(m[1]);
+      return `${m[1]}=${values[m[1]]}`;
+    }
+    return l;
+  });
+  for (const [k, v] of Object.entries(values)) {
+    if (!done.has(k)) out.push(`${k}=${v}`);
+  }
+  fs.writeFileSync(file, out.join("\n").replace(/\n*$/, "\n"));
+  return Object.keys(values);
 }
 
 // ── Render 檢查 ────────────────────────────────────────────────────────
