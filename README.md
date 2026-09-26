@@ -78,9 +78,20 @@ npm run rebuild:supabase -- --check                    # 只跑驗收檢查表
 
 - **SQL 套用順序**：`supabase/schema.sql` → `supabase/migrations/*.sql`（依檔名時間）。
   全部為 `if not exists`，可重複執行；串接後輸出 `supabase/rebuild.sql`（已 gitignore）。
-- **套用路徑自動挑選**：`psql`＋`SUPABASE_DB_URL`（最穩）→ Supabase Management API＋`SUPABASE_ACCESS_TOKEN`
-  → 皆無則提示把 `rebuild.sql` 貼進 Dashboard SQL Editor。
+- **套用路徑自動挑選**（依序）：
+  1. **PostgreSQL 連線字串**（`--db-url=` 或 `SUPABASE_DB_URL`）→ 用 `pg` 驅動直連，**不需要系統 psql**，是最推薦的方式
+  2. `psql`＋`SUPABASE_DB_URL`
+  3. Supabase Management API＋`SUPABASE_ACCESS_TOKEN` → 注意：**若該 token 沒有 DDL 權限，
+     端點會回 `cannot execute CREATE TABLE in a read-only transaction`**（能 SELECT、能讀金鑰，但建不了表），
+     此時改用路徑 1 或把 `rebuild.sql` 貼進 SQL Editor
+  4. 都沒有 → 提示把 `supabase/rebuild.sql` 貼進 Dashboard SQL Editor
+
   （Supabase 的 PostgREST 只做資料 CRUD，**不能執行 DDL**，所以不能只用 service_role key 建表。）
+
+  ```bash
+  # 用連線字串一鍵套用（Dashboard → Settings → Database → Connection string）
+  npm run rebuild:supabase -- --db-url="postgresql://postgres.<ref>:<password>@..." --apply
+  ```
 - **靜態驗證**：腳本會先檢查 28 張表是否齊全、有沒有指向不存在表格的 `alter table`／`create index`
   （`if exists` 會靜默跳過，是重建時最容易漏掉的地方）。
 - **Render 檢查**：`render.yaml` 內硬編碼的 `SUPABASE_URL` 一旦指向舊專案就會被標出並附行號；

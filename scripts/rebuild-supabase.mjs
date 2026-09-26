@@ -47,7 +47,7 @@ const ENV_FILE = argValue("--env-path", path.join(ROOT, ".env"));
 
 const URL_ = process.env.SUPABASE_URL || "";
 let SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const DB_URL = process.env.SUPABASE_DB_URL || "";
+const DB_URL = argValue("--db-url") || process.env.SUPABASE_DB_URL || "";
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN || "";
 
 const mask = (v) => (!v ? "(未設定)" : `${v.slice(0, 6)}… (${v.length} 字)`);
@@ -146,6 +146,27 @@ function hasPsql() {
   try { execFileSync("psql", ["--version"], { stdio: "pipe" }); return true; } catch { return false; }
 }
 
+async function applyWithPg(connString, files) {
+  // 直連 Postgres 執行 DDL：不需要系統 psql，也沒有 Management API 的唯讀限制。
+  let Client;
+  try {
+    ({ Client } = await import("pg"));
+  } catch {
+    throw new Error("找不到 pg 模組，請先執行 npm install（pg 為 devDependency）");
+  }
+  const client = new Client({ connectionString: connString, ssl: { rejectUnauthorized: false } });
+  await client.connect();
+  try {
+    for (const s of files) {
+      process.stdout.write(`  步驟 ${s.step} ${path.basename(s.file)} … `);
+      await client.query(fs.readFileSync(s.file, "utf8"));
+      console.log("OK");
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 async function applyWithPsql(files) {
   for (const s of files) {
     process.stdout.write(`  步驟 ${s.step} ${path.basename(s.file)} … `);
@@ -184,7 +205,9 @@ async function applyWithApi(files) {
 function pickApplyPath() {
   if (has("--psql")) return "psql";
   if (has("--api")) return "api";
-  if (DB_URL && hasPsql()) return "psql";
+  if (has("--pg")) return "pg";
+  if (DB_URL) return "pg";              // 有連線字串：用 node 驅動，不必裝系統 psql
+  if (ACCESS_TOKEN && hasPsql()) return "psql";
   if (ACCESS_TOKEN) return "api";
   return "manual";
 }
@@ -392,14 +415,16 @@ if (!ra) {
 if (has("--apply") || has("--all")) {
   const route = pickApplyPath();
   console.log("\n【5】套用 schema");
-  console.log(`  路徑：${route === "psql" ? "psql 直連" : route === "api" ? "Supabase Management API" : "手動（SQL Editor）"}`);
+  console.log(`  路徑：${route === "psql" ? "psql 直連" : route === "pg" ? "PostgreSQL 連線字串（node pg 驅動）" : route === "api" ? "Supabase Management API" : "手動（SQL Editor）"}`);
   try {
     if (route === "psql") await applyWithPsql(files);
+    else if (route === "pg") await applyWithPg(DB_URL, files);
     else if (route === "api") await applyWithApi(files);
     else {
-      console.log("  ⚠️ 沒有 psql 或 SUPABASE_ACCESS_TOKEN，無法自動套用。請二選一：");
-      console.log("     A) 安裝 psql 並在 .env 設 SUPABASE_DB_URL（Dashboard → Settings → Database → Connection string）");
-      console.log("     B) 在 .env 設 SUPABASE_ACCESS_TOKEN（Dashboard → Account → Access Tokens）");
+      console.log("  ⚠️ 無法自動套用。請擇一：");
+      console.log("     A) 用連線字串（最推薦）：npm run rebuild:supabase -- --db-url=<連線字串> --apply");
+      console.log("        連線字串在 Dashboard → Settings → Database → Connection string");
+      console.log("     B) 設 SUPABASE_DB_URL 到 .env 後重跑（需 psql）");
       console.log("     C) 打開 supabase/rebuild.sql，全選貼進 Dashboard → SQL Editor 執行");
     }
   } catch (e) {
