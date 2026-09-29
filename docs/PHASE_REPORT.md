@@ -115,5 +115,29 @@ supabase-js 在網路／權限失敗時是「回傳 `error` 而不丟錯」，�
 
 ### 待辦（3.0 後續）
 - `YOUTUBE_API_KEY` 未設定 → Agent 1 雷達會自動跳過；要實測需補金鑰。
-- **3.0 Graph 缺少 bootstrap**：`product_entity` 目前只有競業直播清冊會建立，2.0 已發布商品不會自動轉成實體，
-  因此重建後（或全新環境）Agent 1–5 無事可做；清冊檔（`~/costco-analysis/products_part*.md`）目前不在本機與外接碟。
+- 清冊檔（`~/costco-analysis/products_part*.md`）目前不在本機與外接碟，競業訊號只能等它回來。
+
+## Phase 15：Graph 冷啟動與 `listed` 保護 ✅（2026-09-26 實作、09-27 補救）
+
+問題：`product_entity` 只有競業直播清冊會建立，2.0 已發布商品不會自動轉成實體 →
+重建後 Agent 1–5 無事可做，Graph 四張表（`price_observation`／`review_snapshot`／`score_snapshot`／`content_draft`）永遠是 0。
+
+**新增 `scripts/bootstrap-entities.js`（`npm run bootstrap:entities`）**
+- 2.0 商品 → `product_entity`：標準名「繁中譯名 > 英文名 > 日文名」、`canonical_name_jp` 存日文原名、
+  產生關鍵字（供 `matchEntityByTitle` 的包含比對，正規化後 ≥ 4 字避免誤命中）。
+- 以 `canonical_name + brand` 去重（與 unique 條件及 `import-livestream-signal.js` 一致）→ 可重複執行。
+- 預設**預覽不寫入**，`--post` 才寫；預設只處理 `status='published'`，`--status=` 可擴大、`--limit=` 可限量。
+- 已發布商品建立為 `listed`，其餘為 `candidate`。
+
+**新增保護 `shouldSyncEntityStatus`（`lib/graph/pipeline.ts`）**
+人工已上架的實體（`listed`）不因單次低分被自動標成 `rejected`（法規 `hardFail` 仍會淘汰）；
+分數與決策照寫 `score_snapshot`，可追溯。`runDailyPipeline` 的 select 補上 `status`。
+`tests/graph-engines.test.ts` 增 3 項。
+
+**實跑與事故（2026-09-27）**
+- 9/26 實測：`bootstrap:entities --post` 建立 56 筆實體、`agents:run` 評分 56 項（決策全 `reject`，
+  因當時 `intent_score` 0／`reseller_signal` 0），本機 `listed` 保護生效。
+- 9/27 09:31（Asia/Taipei 08:30）**部署端 cron 用尚未部署的舊程式碼**再跑一次，
+  56 筆全部被標成 `rejected`（`last_activity_at` 集中在 00:30–00:31Z）。已還原為 `listed`
+  —— 決策紀錄保留在 `score_snapshot`（9/26、9/27 各 56 筆），沒有任何歷史被抹掉。
+- 教訓：這類「防止資料被錯誤改寫」的保護必須**先部署**再讓 cron 跑；否則本機修好、線上照樣改壞。

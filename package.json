@@ -15,7 +15,8 @@
     "search:run": "node scripts/run-cron.mjs run-search",
     "agents:run": "node scripts/run-cron.mjs run-agents",
     "publish:run": "node scripts/run-cron.mjs publish-scheduled",
-    "compare:sync": "node scripts/sync-comparison-prices.js"
+    "compare:sync": "node scripts/sync-comparison-prices.js",
+    "bootstrap:entities": "node scripts/bootstrap-entities.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

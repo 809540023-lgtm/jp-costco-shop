@@ -28,6 +28,19 @@ export interface PipelineRow {
   modelUsed: string;
 }
 
+// 決策是否覆寫 product_entity.status。
+// 人工已上架的實體（listed）不因「單次低分」被自動淘汰：分數與決策照樣寫進 score_snapshot（可追溯），
+// 但狀態留在 listed，避免 2.0 已發布商品 bootstrap 成實體後，第一次評分就把整個賣場打成 rejected。
+// 法規硬性淘汰（hardFail）不在此限 —— 那是事實而非分數。
+export function shouldSyncEntityStatus(input: {
+  currentStatus?: string | null;
+  decision: string;
+  hardFail: boolean;
+}): boolean {
+  if (input.decision === "reject" && input.currentStatus === "listed" && !input.hardFail) return false;
+  return true;
+}
+
 async function fetchMentions(entityId: string, since: Date): Promise<ResellerMentionLike[]> {
   const { data } = await supabase
     .from("reseller_mention")
@@ -98,7 +111,7 @@ function estimatedMarginTwd(jpPriceJpy: number | null, twPrice: number | null, w
 }
 
 export async function runPipelineForEntity(
-  entity: { id: string; canonical_name: string; canonical_name_jp: string | null; brand: string | null },
+  entity: { id: string; canonical_name: string; canonical_name_jp: string | null; brand: string | null; status?: string | null },
   now: Date,
   astra?: AstraDecisionProvider
 ): Promise<PipelineRow> {
@@ -187,7 +200,7 @@ export async function runPipelineForEntity(
     top50: "top50", weekly_pick: "weekly_pick", hot_candidate: "hot_candidate"
   };
   const newStatus = statusMap[decision.decision];
-  if (newStatus) {
+  if (newStatus && shouldSyncEntityStatus({ currentStatus: entity.status, decision: decision.decision, hardFail: suitability.hardFail })) {
     await supabase.from("product_entity").update({
       status: newStatus, last_activity_at: new Date().toISOString()
     }).eq("id", entity.id);
@@ -208,7 +221,7 @@ export async function runDailyPipeline(options?: { limit?: number; astra?: Astra
   const now = new Date();
   const { data: entities, error } = await supabase
     .from("product_entity")
-    .select("id, canonical_name, canonical_name_jp, brand")
+    .select("id, canonical_name, canonical_name_jp, brand, status")
     .neq("status", "rejected")
     .order("last_activity_at", { ascending: false })
     .limit(options?.limit ?? 200);

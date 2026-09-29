@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { computeSuitability } from "../lib/graph/suitability";
 import { mapDecision, ruleDecision, decideWithOptionalAstra } from "../lib/graph/decision";
 import { buildListingDraft } from "../lib/graph/listing-draft";
+import { shouldSyncEntityStatus } from "../lib/graph/pipeline";
 
 const goodInput = {
   intentScore: 80,
@@ -116,5 +117,21 @@ describe("Agent 5 自動上架草稿", () => {
     expect(draft.unitPriceTwd).not.toBeNull();
     expect(draft.unitPriceTwd!).toBeGreaterThan(0);
     expect(draft.unitPriceTwd!).toBeLessThan(280);
+  });
+});
+
+describe("決策回寫實體狀態（bootstrap 後的賣場保護）", () => {
+  it("人工已上架的實體不因低分被自動 rejected", () => {
+    expect(shouldSyncEntityStatus({ currentStatus: "listed", decision: "reject", hardFail: false })).toBe(false);
+  });
+
+  it("法規硬性淘汰仍會蓋掉 listed", () => {
+    expect(shouldSyncEntityStatus({ currentStatus: "listed", decision: "reject", hardFail: true })).toBe(true);
+  });
+
+  it("其他狀態與其他決策照常回寫", () => {
+    expect(shouldSyncEntityStatus({ currentStatus: "candidate", decision: "reject", hardFail: false })).toBe(true);
+    expect(shouldSyncEntityStatus({ currentStatus: "observing", decision: "reject", hardFail: false })).toBe(true);
+    expect(shouldSyncEntityStatus({ currentStatus: "listed", decision: "top50", hardFail: false })).toBe(true);
   });
 });

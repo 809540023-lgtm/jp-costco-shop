@@ -28,6 +28,8 @@
 - Vision 辨識與配對輸出一律 CANDIDATE / NEEDS_REVIEW；未設定 vision 金鑰時批次自動跳過，不可阻塞其他流程。
 - 配對 → `weekly_store_deals` 只處理人工 VERIFIED 的配對（`lib/vision/deals.ts`）：產出一律 `draft`／`UNVERIFIED`，無促銷文字證據即清空特價欄位，照片存私有 bucket 路徑（讀取端轉 signed URL），已發布 deal 不覆蓋；同批次寫入 `costco_price_observations`（verified=false）並以 JAN 比對 `products` 補 `product_id`。
 - Agent 5 自動文案：通過門檻商品產生 `content_draft`（產出一律 `draft`；已有 draft／approved 不重複產生；promo 欄位不得憑空產生，需明確促銷文字證據）。人工核准後才建立 2.0 商品並沿用 `lib/publish.ts` 共用發布流程（`/api/admin/products/publish` 同一條路徑）；排程發布由 `GET /api/cron/publish-scheduled?secret=<CRON_SECRET>` 於到期時執行，核准前商品不進商業端。
+- **人工已上架的實體（`listed`）不因單次低分被自動標成 `rejected`**（`lib/graph/pipeline.ts` 的 `shouldSyncEntityStatus`）：分數與決策照寫 `score_snapshot`（可追溯），只有法規硬性淘汰（`hardFail`）能覆寫。避免 `npm run bootstrap:entities` 把 2.0 已發布商品變成實體後，第一次評分就把整個賣場打成 rejected（2026-09-27 實際發生過一次）。
+- Graph 冷啟動用 `npm run bootstrap:entities`（2.0 商品 → `product_entity`，預設預覽、`--post` 才寫入）；競業直播清冊（`scripts/import-livestream-signal.js`）仍是 `product_entity` 的主要來源之一。
 
 ## Costco 官方擷取規則（每日搜尋）
 - 來源順序固定：官方 REST API（`lib/costco-api.ts`）優先，HTML 解析（`lib/costco-fetch.ts`）僅在 API 完全失敗時備援。
@@ -64,6 +66,9 @@ npm run publish:run   # = node scripts/run-cron.mjs publish-scheduled（到期�
 
 # 其他通路價格比較（Yahoo 購物／Amazon JP → Supabase comparison_prices）
 npm run compare:sync -- --limit=20   # 預設跳過已有報價的商品，--force 可重抓
+
+# 3.0：Graph 冷啟動（2.0 已發布商品 → product_entity；預覽為預設，--post 才寫入）
+npm run bootstrap:entities            # 預覽；--post 寫入、--status=published,pending_review 擴大範圍
 
 # 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
 node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06

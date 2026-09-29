@@ -133,7 +133,7 @@ npm run rebuild:supabase -- --url=<新URL> --write-env --all
 
 | 表 | 為什麼空 | 怎麼填 |
 |---|---|---|
-| `product_entity` | **只有競業直播帶貨清冊匯入時才會建立**（`scripts/import-livestream-signal.js`、`/api/admin/import-signal`）；2.0 已發布商品不會自動轉成實體 | 需要清冊檔（`~/costco-analysis/products_part*.md`，**repo 外、本機與外接碟目前都沒有**） |
+| `product_entity` | 重建或全新環境時沒有任何來源建立它（**只有競業直播清冊會建立**：`scripts/import-livestream-signal.js`、`/api/admin/import-signal`） | `npm run bootstrap:entities --post`（2.0 商品 → 實體，預設只做 `status='published'`）；清冊檔在 repo 外（`~/costco-analysis/products_part*.md`） |
 | `price_observation` / `review_snapshot` | 觀測要先匹配到實體，沒有實體一律跳過（`skippedNoEntity` 會等於商品數） | 先有 `product_entity`，隔天 cron 自動寫入 |
 | `score_snapshot` / `content_draft` | Agent 4／5 只處理通過門檻的候選實體 | 同上，之後跑 `npm run agents:run` |
 | `weekly_store_deals`、`costco_photo_*` | 現場照片 Queue 與 Drive 清冊不隨重建還原（原始檔仍在 Google Drive） | 後台 `/admin/onsite` 重新 Drive Sync |
@@ -178,6 +178,26 @@ npm run review:pending -- --apply <匯出的 CSV>   # 套用決定（上架／�
 - 核對頁會把命中排除規則的項目**劃掉並預設為「不採用」**，可自行改回上架。
 - `tests/exclude-rules.test.ts` 以實際誤判案例鎖住行為；
   `scripts/test-review-pending.js` 用 jsdom 實際渲染核對頁（含臺幣顯示與劃掉）。
+
+### Graph 冷啟動（`npm run bootstrap:entities`）
+
+重建後（或全新環境）`product_entity` 是空的，Agent 1–5 就沒有東西可評分 ——
+`price_observation`／`review_snapshot`／`score_snapshot`／`content_draft` 會一直是 0。
+這支腳本把 2.0 商品轉成 Graph 實體：
+
+```bash
+npm run bootstrap:entities                              # 預覽（不寫入）
+npm run bootstrap:entities -- --post                    # 寫入（預設 status='published'）
+npm run bootstrap:entities -- --status=published,pending_review --limit=50
+```
+
+- 標準名取「繁中譯名 > 英文名 > 日文名」，`canonical_name_jp` 另存日文原名，並產生關鍵字供 Agent 1 影片標題比對。
+- 以 `canonical_name + brand` 去重 → 可重複執行；已發布商品建立為 `status='listed'`，其餘為 `candidate`。
+- **保護機制**：`listed` 實體不會因單次低分被自動標成 `rejected`（`shouldSyncEntityStatus`，法規 `hardFail` 除外）。
+  決策與分數仍寫入 `score_snapshot`，可追溯。2026-09-27 曾因為部署端還沒有這個保護，
+  56 筆已發布商品被當天的 cron 一次評分全部打成 `rejected`（已還原）。
+- 匯入後跑 `npm run agents:run`；沒有信號的實體分數會偏低（`intent_score` 0／`reseller_signal` 0），
+  這是正常的 —— 等競業清冊與留言意圖累積後才會改變。
 
 ### 匯入現場照片商品（`npm run seed:onsite`）
 
