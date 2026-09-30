@@ -179,6 +179,19 @@ npm run review:pending -- --apply <匯出的 CSV>   # 套用決定（上架／�
 - `tests/exclude-rules.test.ts` 以實際誤判案例鎖住行為；
   `scripts/test-review-pending.js` 用 jsdom 實際渲染核對頁（含臺幣顯示與劃掉）。
 
+### 前台價格顯示（`lib/price-display.ts`）
+
+`taiwan_suggested_price` 是**唯一**的販售價格來源，前台不得用 `|| 0` 補值。
+
+- 沒有定價（`null`／`0`／非有限數）→ 顯示「**未定價**」，不可顯示 `NT$0`。
+  實測 155 筆已發布商品中 75 筆沒有定價（多為現場照片匯入的
+  `official_catalog_onsite_match`，`scripts/seed-onsite-products.mjs` 依規則不推估價格），
+  舊版 `|| 0` 會讓它們在賣場上看起來是 0 元商品。
+- 未定價商品**不顯示「加入購物車」**（避免產生 0 元訂單），改顯示「此商品尚未定價，暫不開放訂購」。
+- 日幣價（官方抓取值）抓不到時整段不顯示，也不顯示 `¥0`。
+- 顯示邏輯集中在 `lib/price-display.ts`（`hasSuggestedPrice`／`formatSuggestedPrice`／`formatJpyPrice`），
+  `/costco`、`/costco/product/[id]`、`/costco/live` 共用；`tests/price-display.test.ts` 鎖住行為。
+
 ### Graph 冷啟動（`npm run bootstrap:entities`）
 
 重建後（或全新環境）`product_entity` 是空的，Agent 1–5 就沒有東西可評分 ——

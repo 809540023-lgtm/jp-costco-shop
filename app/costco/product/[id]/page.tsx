@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import AddToCart from "./add-to-cart";
+import { formatJpyPrice, formatSuggestedPrice, hasSuggestedPrice } from "@/lib/price-display";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   if (!product) notFound();
 
   const price = product.taiwan_suggested_price || 0;
+  const sellable = hasSuggestedPrice(product.taiwan_suggested_price);
   const features: { name: string; value: string }[] = (() => {
     if (!product.features) return [];
     try { return JSON.parse(product.features); } catch { return []; }
@@ -46,8 +48,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <h1 className="text-xl font-extrabold">{product.zh_name || product.jp_name}</h1>
           <p className="mt-1 text-sm text-gray-500">{product.jp_name}{product.english_name ? `（${product.english_name}）` : null}</p>
           <div className="mt-3 flex items-end gap-2">
-            <span className="text-2xl font-extrabold text-brand">NT${Math.round(price).toLocaleString()}</span>
-            {product.jp_price ? <span className="text-sm text-gray-400">日本 ¥{Math.round(product.jp_price).toLocaleString()}</span> : null}
+            <span className={`text-2xl font-extrabold ${sellable ? "text-brand" : "text-gray-400"}`}>
+              {formatSuggestedPrice(product.taiwan_suggested_price)}
+            </span>
+            {formatJpyPrice(product.jp_price) ? (
+              <span className="text-sm text-gray-400">日本 {formatJpyPrice(product.jp_price)}</span>
+            ) : null}
           </div>
 
           <dl className="mt-4 space-y-2 text-sm">
@@ -93,7 +99,9 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           {(comparePrices || []).length ? (
             <div className="mt-6">
               <h2 className="text-base font-extrabold">其他通路價格比較</h2>
-              <p className="mt-1 text-xs text-gray-500">日本 Costco 價格 ¥{Math.round(product.jp_price || 0).toLocaleString()}。以下為其他通路參考價，供您比較。</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {formatJpyPrice(product.jp_price) ? `日本 Costco 價格 ${formatJpyPrice(product.jp_price)}。` : "日本 Costco 價格未取得。"}以下為其他通路參考價，供您比較。
+              </p>
               <div className="mt-2 space-y-2">
                 {(comparePrices || []).map((c, i) => (
                   <div key={i} className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2">
@@ -105,7 +113,14 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             </div>
           ) : null}
 
-          <AddToCart productId={product.id} name={product.zh_name || product.jp_name} price={price} imageUrl={product.image_url} />
+          {sellable ? (
+            <AddToCart productId={product.id} name={product.zh_name || product.jp_name} price={price} imageUrl={product.image_url} />
+          ) : (
+            <div className="mt-5 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
+              此商品尚未定價，暫不開放訂購。
+            </div>
+          )}
+
         </div>
       </div>
     </div>

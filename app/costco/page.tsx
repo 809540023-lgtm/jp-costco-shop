@@ -1,4 +1,5 @@
 import { getPublishedProducts } from "@/lib/search";
+import { formatSuggestedPrice, hasSuggestedPrice } from "@/lib/price-display";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +37,8 @@ export default async function CostcoHome() {
               </div>
               <div className="p-3">
                 <div className="text-sm font-bold leading-snug">{p.zh_name || p.jp_name}</div>
-                <div className="mt-1 text-sm font-extrabold text-brand">
-                  NT${Math.round(p.taiwan_suggested_price || 0).toLocaleString()}
+                <div className={`mt-1 text-sm font-extrabold ${hasSuggestedPrice(p.taiwan_suggested_price) ? "text-brand" : "text-gray-400"}`}>
+                  {formatSuggestedPrice(p.taiwan_suggested_price)}
                 </div>
                 {p.is_hot_buy ? <span className="mt-1 inline-block rounded bg-brand px-1.5 py-0.5 text-xs text-white">Hot Buy</span> : null}
               </div>

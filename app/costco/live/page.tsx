@@ -1,5 +1,6 @@
 import LivePlayer from "@/components/live/LivePlayer";
 import { getPublishedProducts } from "@/lib/search";
+import { formatSuggestedPrice, hasSuggestedPrice } from "@/lib/price-display";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +54,8 @@ export default async function LivePage() {
               </div>
               <div className="p-3">
                 <div className="text-sm font-bold leading-snug line-clamp-2">{p.zh_name || p.jp_name}</div>
-                <div className="mt-1 text-sm font-extrabold text-brand">
-                  NT${Math.round(p.taiwan_suggested_price || 0).toLocaleString()}
+                <div className={`mt-1 text-sm font-extrabold ${hasSuggestedPrice(p.taiwan_suggested_price) ? "text-brand" : "text-gray-400"}`}>
+                  {formatSuggestedPrice(p.taiwan_suggested_price)}
                 </div>
               </div>
             </a>
