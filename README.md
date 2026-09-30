@@ -208,7 +208,22 @@ npm run bootstrap:entities -- --status=published,pending_review --limit=50
 - 以 `canonical_name + brand` 去重 → 可重複執行；已發布商品建立為 `status='listed'`，其餘為 `candidate`。
 - **保護機制**：`listed` 實體不會因單次低分被自動標成 `rejected`（`shouldSyncEntityStatus`，法規 `hardFail` 除外）。
   決策與分數仍寫入 `score_snapshot`，可追溯。2026-09-27 曾因為部署端還沒有這個保護，
-  56 筆已發布商品被當天的 cron 一次評分全部打成 `rejected`（已還原）。
+  56 筆已發布商品被當天的 cron 一次評分全部打成 `rejected`。
+- **狀態修復（`--repair`）**：冷啟動只會「跳過已存在」，不會修正狀態，所以被誤標的實體
+  過去只能手動改資料庫。加上 `--repair` 可還原：
+
+  ```bash
+  npm run bootstrap:entities -- --repair            # 預覽：列出會還原的實體（不寫入）
+  npm run bootstrap:entities -- --repair --post     # 還原為 listed
+  ```
+
+  - 只處理「對應到 `status='published'` 商品、卻不是 `listed`」的實體，**單向修復不會降級 `listed`**
+    （`listed` 也可能是競業清冊匯入時人工指定的事實）。
+  - 比對鍵是 `canonical_name + brand`。**已知限制**：商品之後補上繁中譯名會改變標準名，
+    該筆就不會被認出（`--repair` 只會少修、不會錯修；請以預覽清單人工核對）。
+  - 2026-09-30 實測：預覽 52 筆、`--post` 還原 52 筆，接著對正式環境跑 `npm run agents:run`
+    （評分 52 項、決策全為 `reject`），**狀態仍保持 `listed`** → 保護在部署端確實生效。
+    剩下的 4 筆實體對應的商品本身是 `rejected`（尿布／瓶裝茶／オキシクリーン），維持 `rejected` 正確。
 - 匯入後跑 `npm run agents:run`；沒有信號的實體分數會偏低（`intent_score` 0／`reseller_signal` 0），
   這是正常的 —— 等競業清冊與留言意圖累積後才會改變。
 

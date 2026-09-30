@@ -141,3 +141,35 @@ supabase-js 在網路／權限失敗時是「回傳 `error` 而不丟錯」，�
   56 筆全部被標成 `rejected`（`last_activity_at` 集中在 00:30–00:31Z）。已還原為 `listed`
   —— 決策紀錄保留在 `score_snapshot`（9/26、9/27 各 56 筆），沒有任何歷史被抹掉。
 - 教訓：這類「防止資料被錯誤改寫」的保護必須**先部署**再讓 cron 跑；否則本機修好、線上照樣改壞。
+
+## Phase 16：前台定價誠實化與實體狀態修復 ✅（2026-09-30）
+
+### 問題一：未定價商品顯示 `NT$0`
+`/costco`、`/costco/product/[id]`、`/costco/live` 都用 `Math.round(p.taiwan_suggested_price || 0)`；
+實測 155 筆已發布商品中 **75 筆**沒有定價（多為現場照片匯入的 `official_catalog_onsite_match`，
+`scripts/seed-onsite-products.mjs` 依規則不推估價格），前台顯示成 `NT$0`，
+且商品頁仍可加入購物車 → 會產生 0 元訂單。
+
+**新增 `lib/price-display.ts`**：`hasSuggestedPrice`／`formatSuggestedPrice`／`formatJpyPrice`。
+缺值或 0 顯示「未定價」（不再用 `|| 0` 補值，符合「價格不可推估」規則）；
+未定價商品不顯示「加入購物車」；日幣價抓不到時不顯示（原本會顯示 `¥0`）。
+`tests/price-display.test.ts`（4 項）鎖住行為。部署後實測 `/costco`：`未定價` 出現、`NT$0` 為 0。
+
+### 問題二：被誤標的實體沒有修復工具
+`bootstrap-entities.js` 只會「跳過已存在」，不修正狀態；9/27 被打成 `rejected` 的實體
+只能手動改資料庫，因此 9/29、9/30 的 cron 又各打了一次。
+
+**新增 `--repair`（`scripts/lib/entity-status.mjs`）**
+- 純邏輯抽出成 `scripts/lib/entity-status.mjs`：`entityKey`／`canonicalName`／
+  `expectedEntityStatus`／`planStatusRepairs`（`tests/entity-status.test.ts` 6 項）。
+- 只還原「對應到 `status='published'` 商品、卻不是 `listed`」的實體，**單向不降級**。
+- 預設預覽，`--post` 才寫入；與建立流程共用同一組比對鍵。
+
+**部署與實測（同日）**
+1. 先補推 `c746994`（listed 保護）與 `2a7158a`（定價），確認 Render 已上線。
+2. `bootstrap:entities --repair`：預覽 52 筆 → `--post` 還原 52 筆（原狀態全為 `rejected`）。
+3. 對**正式環境**跑 `npm run agents:run`：評分 52 項、決策分布 `{"reject":52}`（無信號屬正常），
+   跑完 `product_entity` 仍是 **listed 52／rejected 4** → 保護在部署端確實生效。
+4. 剩下 4 筆對應的商品本身是 `rejected`（尿布 ×2、`LDC コーン茶`、`オキシクリーン`），維持 `rejected` 正確。
+
+**驗證**：`npm test` 20 檔／144 測試全過；`npm run build` 通過。

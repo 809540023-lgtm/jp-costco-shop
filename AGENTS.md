@@ -72,6 +72,7 @@ npm run compare:sync -- --limit=20   # 預設跳過已有報價的商品，--for
 
 # 3.0：Graph 冷啟動（2.0 已發布商品 → product_entity；預覽為預設，--post 才寫入）
 npm run bootstrap:entities            # 預覽；--post 寫入、--status=published,pending_review 擴大範圍
+npm run bootstrap:entities -- --repair # 還原被誤標的已上架實體（→ listed；--post 才寫入）
 
 # 3.0：競業直播帶貨清單匯入 Graph（清冊不提交 GitHub）
 node scripts/import-livestream-signal.js <md檔...> --reseller-key skyblue --platform facebook --video-date 2026-09-06

@@ -12,6 +12,11 @@
 //   node scripts/bootstrap-entities.js --post                   # 寫入（status=published）
 //   node scripts/bootstrap-entities.js --post --status=published,pending_review
 //   node scripts/bootstrap-entities.js --post --limit=50
+//   node scripts/bootstrap-entities.js --repair                 # 預覽「狀態修復」（→ listed）
+//   node scripts/bootstrap-entities.js --repair --post          # 實際還原被誤標的實體
+//
+// --repair：不會新增實體，只把「對應到已發布商品、卻不是 listed」的實體還原為 listed
+// （例：2026-09-27 部署端舊碼把 56 筆已上架實體打成 rejected）。單向修復，不降級 listed。
 //
 // 注意：實體建立後，`npm run agents:run` 會開始評分它們（分數寫入 score_snapshot）。
 // 人工已上架的實體標為 `listed`，不會因單次低分被自動標成 rejected（法規硬性淘汰除外）。
@@ -33,6 +38,7 @@ loadEnv();
 
 const args = process.argv.slice(2);
 const post = args.includes("--post");
+const repairOnly = args.includes("--repair");
 const statusArg = args.find((a) => a.startsWith("--status="));
 const limitArg = args.find((a) => a.startsWith("--limit="));
 const statuses = (statusArg ? statusArg.slice("--status=".length) : "published")
@@ -54,9 +60,14 @@ function norm(s) {
   return (s || "").toLowerCase().replace(/\s+/g, "");
 }
 
-// 實體標準名：繁中譯名 > 英文名 > 日文名（與前台顯示的優先序一致）。
-function canonicalName(p) {
-  return (p.zh_name || p.english_name || p.jp_name || "").trim();
+// 實體標準名／去重鍵／狀態修復規劃放在共用模組（vitest 直接測）。
+let entityKey;
+let canonicalName;
+let planStatusRepairs;
+async function loadStatusLib() {
+  if (!entityKey) {
+    ({ entityKey, canonicalName, planStatusRepairs } = await import("./lib/entity-status.mjs"));
+  }
 }
 
 // 關鍵字供 Agent 1 影片標題比對（以「包含」比對，正規化後長度需 ≥ 4，太短容易誤命中）。
@@ -100,7 +111,7 @@ async function fetchEntities() {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from("product_entity")
-      .select("id, canonical_name, brand")
+      .select("id, canonical_name, brand, status")
       .range(from, from + pageSize - 1);
     if (error) throw new Error(`讀取 product_entity 失敗：${error.message}`);
     rows.push(...(data || []));
@@ -109,16 +120,51 @@ async function fetchEntities() {
   return rows;
 }
 
-// 以 canonical_name + brand 去重（與 product_entity 的 unique 條件及
-// import-livestream-signal.js 的比對方式一致）。
-function entityKey(name, brand) {
-  return `${(name || "").trim()}|${(brand || "").trim()}`;
+// --repair：只還原狀態，不新增實體（單向 → listed，不降級）。
+async function repairStatuses(products, entities) {
+  const repairs = planStatusRepairs(products, entities);
+  const byFrom = {};
+  for (const r of repairs) {
+    const k = r.from || "null";
+    byFrom[k] = (byFrom[k] || 0) + 1;
+  }
+  console.log(
+    `\n狀態修復（→ listed）：${repairs.length} 筆${repairs.length ? `（原狀態 ${JSON.stringify(byFrom)}）` : ""}`
+  );
+  for (const r of repairs.slice(0, 10)) {
+    console.log(`  ~ [${r.from || "null"} → listed] ${r.canonical_name}${r.brand ? `（${r.brand}）` : ""}`);
+  }
+  if (repairs.length > 10) console.log(`  …其餘 ${repairs.length - 10} 筆`);
+
+  if (!repairs.length) {
+    console.log("沒有需要修復的實體。");
+    return;
+  }
+  if (!post) {
+    console.log("\n目前是預覽模式（未寫入）。確認無誤後加上 --post 執行。");
+    return;
+  }
+
+  const ids = repairs.map((r) => r.id);
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { error } = await supabase.from("product_entity").update({ status: "listed" }).in("id", chunk);
+    if (error) throw new Error(`修復 product_entity 失敗：${error.message}`);
+  }
+  console.log(`\n完成：還原 ${ids.length} 筆實體為 listed。`);
+  console.log("下一步：npm run agents:run（listed 保護生效時，分數照寫但狀態不會被改成 rejected）。");
 }
 
 async function main() {
+  await loadStatusLib();
   console.log(`目標來源：products（status ∈ ${statuses.join(", ")}）${limit ? `，上限 ${limit} 筆` : ""}`);
   const [products, entities] = await Promise.all([fetchProducts(), fetchEntities()]);
   console.log(`商品 ${products.length} 筆、現有實體 ${entities.length} 筆。`);
+
+  if (repairOnly) {
+    await repairStatuses(products, entities);
+    return;
+  }
 
   const existing = new Set(entities.map((e) => entityKey(e.canonical_name, e.brand)));
   const rows = [];
