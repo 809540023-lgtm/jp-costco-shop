@@ -173,3 +173,32 @@ supabase-js 在網路／權限失敗時是「回傳 `error` 而不丟錯」，�
 4. 剩下 4 筆對應的商品本身是 `rejected`（尿布 ×2、`LDC コーン茶`、`オキシクリーン`），維持 `rejected` 正確。
 
 **驗證**：`npm test` 20 檔／144 測試全過；`npm run build` 通過。
+
+## Phase 17：缺定價核價流程 ✅（2026-09-30）
+
+問題：Phase 16 修好「未定價不再顯示 NT$0」後，這批商品仍然**賣不掉** —— 而且專案原本
+沒有任何把售價補回去的路徑：現場照片匯入（`official_catalog_onsite_match`）依規則不推估價格，
+Agent 5 又只處理通過門檻的候選，`taiwan_suggested_price` 只能手動改資料庫。
+
+**新增 `scripts/price-missing.mjs`（`npm run price:missing`）+ `scripts/lib/pricing.mjs`**
+- 匯出清單：`review/missing_prices.html`（一頁核價：圖片、日文名、現行日幣價、促銷前原價、
+  參考價、輸入框、「採用參考價」、「全部填入參考價」、匯出 CSV、進度條、localStorage 保留）＋ `.csv`。
+- 參考價 = 日幣**現行價** × `JPY_TWD_RATE`（與 `lib/graph/listing-draft.ts` 同一組匯率，
+  由 `scripts/lib/exclude-rules.mjs` 的 `JPY_TWD`／`toTwd` 共用）；`discount_price` 是促銷前原價
+  （`lib/search.ts`），只列出來供判斷，不當現行價。
+- **售價不自動寫入**：一定要匯出 CSV 再 `--apply`。寫入限制：`status='published'`、
+  售價為正整數、已定價需 `--force`；每筆寫 `audit_logs`（`action=product_priced`，
+  含原值 → 新值與來源 CSV）。`--dry-run` 可先看會寫什麼。
+- 純邏輯（`currentJpy`／`needsPricing`／`referenceTwdFor`／`parseTwd`／`parsePriceCsv`／
+  `planPriceUpdates`）集中在 `scripts/lib/pricing.mjs`，`tests/pricing.test.ts` 8 項。
+
+**實測（2026-09-30）**
+- `npm run price:missing`：已發布 155 筆 → 缺定價 **75 筆**，其中 **69 筆可算參考價**
+  （6 筆無日幣價，需自行定價）。
+- `--apply <測試 CSV> --dry-run`：可寫入 1 筆、略過 2 筆（`not_published`／`invalid_price`），
+  千分位與「引號內逗號」都正確解析。
+- 寫入路徑以 **no-op PATCH**（篩選不存在的 id）驗證 → HTTP 204 且未更動任何資料；
+  `audit_logs` 欄位（`actor/action/entity_type/entity_id/detail`）與寫入形狀一致。
+- 實際售價仍待人工核價後 `--apply`（不由程式決定）。
+
+**驗證**：`npm test` 21 檔／152 測試全過。

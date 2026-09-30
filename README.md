@@ -192,6 +192,31 @@ npm run review:pending -- --apply <匯出的 CSV>   # 套用決定（上架／�
 - 顯示邏輯集中在 `lib/price-display.ts`（`hasSuggestedPrice`／`formatSuggestedPrice`／`formatJpyPrice`），
   `/costco`、`/costco/product/[id]`、`/costco/live` 共用；`tests/price-display.test.ts` 鎖住行為。
 
+### 缺定價核價（`npm run price:missing`）
+
+已發布商品中有一批**沒有台幣定價**（現場照片來源，`scripts/seed-onsite-products.mjs` 依規則
+「不推估價格」），前台只能顯示「未定價」且無法訂購；專案原本也沒有把售價補回去的路徑
+（Agent 5 只處理通過門檻的候選）。這支工具補上人工核價流程：
+
+```bash
+npm run price:missing                          # 產生 review/missing_prices.html + .csv
+npm run price:missing -- --open                # 產生後直接開啟
+npm run price:missing -- --apply <匯出的 CSV>   # 寫入售價（並寫 audit_logs）
+npm run price:missing -- --apply <CSV> --dry-run # 只預覽會寫什麼
+npm run price:missing -- --apply <CSV> --force   # 覆寫已有定價者
+```
+
+- **售價一律人工決定**：工具只算「參考價 = 日幣現行價 × `JPY_TWD_RATE`（預設 0.22）」，
+  未含國際運費與關稅，寫入前必須匯出 CSV 再 `--apply`，不會自動套用。
+- 現行價取 `jp_price`；`discount_price` 是**促銷前原價**（`lib/search.ts`），清單另列供判斷。
+- 參考價與排除規則共用同一組匯率（`scripts/lib/exclude-rules.mjs` 的 `JPY_TWD`）。
+- 寫入限制：只更新 `status='published'` 的商品（下架品不可改價）、售價需為正整數、
+  已有定價者需 `--force`；每次寫入都留 `audit_logs`（`action=product_priced`，含原值 → 新值）。
+- 2026-09-30 實測：155 筆已發布商品中 75 筆缺定價，其中 **69 筆可算參考價**（6 筆無日幣價）；
+  寫入路徑以 no-op PATCH 驗證（204，未動任何資料），`--dry-run` 驗證略過原因分類
+  （`not_published`／`invalid_price`／`already_priced`）。
+- 產出放在 `review/`（已 gitignore）；邏輯在 `scripts/lib/pricing.mjs`，`tests/pricing.test.ts` 8 項鎖住行為。
+
 ### Graph 冷啟動（`npm run bootstrap:entities`）
 
 重建後（或全新環境）`product_entity` 是空的，Agent 1–5 就沒有東西可評分 ——
