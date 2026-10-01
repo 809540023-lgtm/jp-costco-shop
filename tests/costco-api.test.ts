@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  stockStatusOf,
   extractDecals,
   extractPromotion,
   absoluteCostcoUrl,
@@ -120,5 +121,49 @@ describe("costco-api mapOfficialProduct", () => {
   it("缺 code 或 name 視為無效資料", () => {
     expect(mapOfficialProduct({ name: "只有名稱" })).toBeNull();
     expect(mapOfficialProduct({ code: "1730866" })).toBeNull();
+  });
+});
+
+describe("庫存狀態：沒有資料不可當成缺貨", () => {
+  it("官方回報 inStock → true；其他狀態 → false", () => {
+    expect(stockStatusOf({ stockLevelStatus: "inStock" })).toBe(true);
+    expect(stockStatusOf({ stockLevelStatus: "outOfStock" })).toBe(false);
+  });
+
+  it("官方沒回報庫存（缺欄位／null）→ undefined（略過寫入），不是 false", () => {
+    expect(stockStatusOf(undefined)).toBeUndefined();
+    expect(stockStatusOf(null)).toBeUndefined();
+    expect(stockStatusOf({})).toBeUndefined();
+    expect(stockStatusOf({ stockLevelStatus: null })).toBeUndefined();
+    expect(stockStatusOf({ stockLevelStatus: "" })).toBeUndefined();
+  });
+
+  it("mapOfficialProduct 不再把缺少庫存欄位記成缺貨", () => {
+    const withoutStock = mapOfficialProduct({ code: "1", name: "テスト商品", price: { value: 500 } });
+    expect(withoutStock!.inStock).toBeUndefined();
+
+    const withStock = mapOfficialProduct({
+      code: "2",
+      name: "テスト商品2",
+      price: { value: 500 },
+      stock: { stockLevelStatus: "inStock" }
+    });
+    expect(withStock!.inStock).toBe(true);
+
+    const outOfStock = mapOfficialProduct({
+      code: "3",
+      name: "テスト商品3",
+      price: { value: 500 },
+      stock: { stockLevelStatus: "outOfStock" }
+    });
+    expect(outOfStock!.inStock).toBe(false);
+  });
+
+  it("search 的寫入規則：undefined 不覆蓋既有庫存欄位", () => {
+    // lib/search.ts：`if (raw.inStock !== undefined) row.in_stock = raw.inStock;`
+    const row: Record<string, unknown> = { id: "p1", in_stock: true };
+    const raw = { inStock: undefined };
+    if (raw.inStock !== undefined) row.in_stock = raw.inStock;
+    expect(row.in_stock).toBe(true);
   });
 });

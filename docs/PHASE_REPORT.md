@@ -249,3 +249,43 @@ localStorage，任何人改一下就能用 1 元下單（訂單金額、`order_i
   → 回應為資料庫價格 312，且缺貨回 `warnings` 不擋單；未發布商品回 `not_published`；
   `POST /api/checkout` 帶未定價商品 → **409 且在建立訂單前就被擋下**（`orders` 仍為 0 筆）。
   未建立真實測試訂單，避免污染正式訂單資料。
+
+## Phase 19：修正「沒有庫存資料被記成缺貨」✅（2026-10-01）
+
+### 發現
+使用者問「我們並沒有輸入庫存，為什麼會缺貨」。追查後確認這是**資料錯誤，不是真的缺貨**：
+
+- `lib/costco-api.ts` 原本寫 `inStock: p.stock?.stockLevelStatus === STOCK_IN_STOCK`。
+  官方沒有回報庫存時（`stock` 缺欄位）運算式是 `undefined === "inStock"` → **false**，
+  於是把「沒有資料」記成「缺貨」。
+- 證據（依來源分組，`products` 已發布 155 筆）：
+
+  | 來源 | 筆數 | in_stock=true | in_stock=false |
+  |---|---|---|---|
+  | `official_rest_api` | 41 | 41 | 0 |
+  | `official_catalog_onsite_match` | 66 | 64 | 2 |
+  | `official_sell_count`（舊 top50 抓取） | 17 | 0 | **17** |
+  | `official_category`（舊分類抓取） | 31 | 0 | **31** |
+
+  兩個舊來源「從來沒有出現過 true」＝欄位不存在被預設成 false 的特徵，不是真實庫存。
+
+### 修法
+1. `lib/costco-api.ts` 抽出 `stockStatusOf()`：官方沒回報時回 **undefined**，
+   由 `lib/search.ts` 略過寫入（`if (raw.inStock !== undefined)`），不再覆蓋成 false。
+   `tests/costco-api.test.ts` 增 4 項（含「mapOfficialProduct 不再把缺欄位記成缺貨」）。
+2. 資料修正：`in_stock=false` 且來源為 `official_sell_count`／`official_category` 的
+   **52 筆改為 `null`（未標示）**，並寫入 `audit_logs`（`product_stock_corrected`）。
+   來自官方目錄（真的有 `stock` 欄位：全目錄 inStock 9907／outOfStock 479）的資料保留不動。
+
+### 修正後（實測）
+- 已發布 155 筆、有台幣定價 **80 筆（可下單）**；80 筆中 in_stock=true 34、false 0、未標示 46。
+- 全站仍標示缺貨的已發布商品只剩 **2 筆**（`jp-54201`、`jp-60986`，來自官方目錄的真實狀態）。
+- 購物車不再對「沒有資料」的商品顯示缺貨提醒。
+
+### 一併釐清（使用者提問）
+- **可下單數量是 80 筆，不是 34 筆**：34 是「有價且 in_stock=true」的數字，只在缺貨硬擋時才有意義；
+  已在 Phase 18 改為「缺貨只提醒、不擋單」，所以現在 80 筆都能下單。
+- **Costco 站沒有會員帳號系統**：買家不需要註冊，訂單以「訂單編號 + 下單手機」查詢；
+  唯一的登入是後台的單一密碼（`ADMIN_PASSWORD`），沒有 users 表。
+  Supabase 這個專案（`ktqupvrefxejjjsacbqd`）與另一個系統共用，看到 `users`（1 筆，林博／admin）、
+  `facebook_accounts`、`buyer_requirements` 等表屬於那個系統，不是 Costco 的（README 已有此警示）。

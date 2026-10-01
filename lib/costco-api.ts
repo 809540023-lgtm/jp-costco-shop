@@ -42,6 +42,19 @@ export interface OfficialApiProduct {
   purchasable?: boolean | null;
 }
 
+/**
+ * 官方庫存狀態 → in_stock。
+ *
+ * 官方沒回報（`stock` 缺欄位、`stockLevelStatus` 為 null）時回 **undefined**，
+ * 由寫入端略過該欄位，而不是記成 false（缺貨）。
+ * 「沒有資料」與「確認缺貨」是不同的事，混在一起會讓整個賣場看起來缺貨。
+ */
+export function stockStatusOf(stock?: { stockLevelStatus?: string | null } | null): boolean | undefined {
+  const status = stock?.stockLevelStatus;
+  if (!status) return undefined;
+  return status === STOCK_IN_STOCK;
+}
+
 export interface OfficialDecals {
   hotBuy: boolean;
   madeInJapan: boolean;
@@ -155,7 +168,10 @@ export function mapOfficialProduct(p: OfficialApiProduct): RawProduct | null {
     isHotBuy: decals.hotBuy,
     madeInJapan: decals.madeInJapan,
     officialBadges: decals.badges.length ? decals.badges : undefined,
-    inStock: p.stock?.stockLevelStatus === STOCK_IN_STOCK,
+    // 只有在官方真的回報庫存狀態時才寫入；缺欄位不可當成缺貨。
+    // 先前寫成 `p.stock?.stockLevelStatus === STOCK_IN_STOCK`，欄位不存在時會得到
+    // `undefined === "inStock"` → false，把「沒有資料」記成「缺貨」（實測造成 48 筆假缺貨）。
+    inStock: stockStatusOf(p.stock),
     rating: numOrNull(p.averageRating) ?? undefined,
     reviewCount: numOrNull(p.numberOfReviews) ?? undefined,
     summary: summaryToText(p.summary) ?? undefined,
