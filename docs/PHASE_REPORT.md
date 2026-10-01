@@ -202,3 +202,50 @@ Agent 5 又只處理通過門檻的候選，`taiwan_suggested_price` 只能手�
 - 實際售價仍待人工核價後 `--apply`（不由程式決定）。
 
 **驗證**：`npm test` 21 檔／152 測試全過。
+
+## Phase 18：購物車系統完整化 ✅（2026-10-01）
+
+### 問題一（嚴重）：結帳金額可被前端篡改
+`/api/checkout` 原本直接採用前端傳來的 `unitPrice` 建立訂單。購物車存在瀏覽器
+localStorage，任何人改一下就能用 1 元下單（訂單金額、`order_items.unit_price` 都會被寫入假價格）。
+
+**修法：金額只由伺服器決定**（`lib/checkout-resolve.ts`）
+- `checkoutSchema` 只接受 `productId` 與 `quantity`；`normalizeLines` 把偷帶的 `unitPrice`／`name`
+  直接丟掉（zod 亦會 strip 未知欄位）。
+- `buildResolvedCart` 以 `products` 表為準重取名稱與價格，逐項驗證
+  `status='published'`、`taiwan_suggested_price > 0`、`in_stock !== false`（`null` 視為未標示，不阻擋）。
+- 任一項不合格 → HTTP 409 + 問題清單，**整筆拒絕不部分成立**；`createOrder` 改為接收
+  已解析的 `lines`，不再接觸前端價格。
+- **缺貨是提醒不是硬擋**（`BLOCK_OUT_OF_STOCK`，預設 false）：跨境代購是下單後才去日本採購，
+  且每日搜尋寫入的 `in_stock` 是抓取當下的狀態、可能過期。實測 2026-10-01 已發布 155 筆中
+  有 50 筆 `in_stock=false`，硬擋會讓可購買商品由 80 筆掉到 34 筆（等於鎖住半個賣場），
+  因此改為 `warnings`：結帳頁顯示「目前標示缺貨，下單後確認，無法採購會通知退款或換貨」。
+  真正缺貨的處理放在採購階段（與運費閘門同一套人工流程）。要改成硬擋設 `BLOCK_OUT_OF_STOCK=true`。
+
+### 問題二：購物車功能不完整
+原本只有「+/− 數量」與「移除」，且價格會停留在加入當時（商品改價、下架、變成未定價都不會反映），
+也沒有數量徽章、清空、跨分頁同步、結帳摘要、訂單查詢。
+
+**新增**
+- `lib/cart.ts`：`parseCart`（壞資料一律丟棄、同商品合併、上限截斷）、`addToCart`／`setQuantity`／
+  `removeFromCart`、`cartCount`／`cartSubtotal`、`readCart`／`writeCart`／`clearCart`、
+  `subscribeCart`（同分頁自訂事件 + 其他分頁 `storage` 事件）；`MAX_QUANTITY=99`、`MAX_ITEMS=30`。
+- `lib/order-status.ts`：訂單狀態中文標籤與說明、`ORDER_FLOW` 進度、運費閘門標籤、個資遮罩。
+- `POST /api/cart/validate`：購物車即時校正（不寫入資料），購物車頁與結帳頁都用它取得權威價格。
+- `POST /api/orders/lookup`：訂單查詢需「訂單編號 + 下單手機」同時正確。
+- 頁面：`/costco/cart`（數量輸入、移除、清空、問題項目一鍵移除、小計與目前應付、擋住未通過的結帳）、
+  `/costco/checkout`（先校正、顯示權威金額與訂單摘要、送出後清空購物車）、
+  `/costco/success`（訂單明細／金額／進度／遮罩後的收貨資訊）、`/costco/orders`（查詢與進度）。
+- `components/cart-badge.tsx`：標頭購物車數量徽章（跨分頁即時）。
+- `lib/orders.ts`：`getPublicOrderView`、`lookupOrder`（手機比對只看數字），回傳一律遮罩。
+
+### 驗證
+- `npx vitest run`：25 檔／**200 測試全過**（新增 cart 17、checkout-resolve 11、order-status 8、
+  validation 2、orders-flow 8）。`tests/orders-flow.test.ts` 用**記憶體假 Supabase** 驗證訂單
+  寫入的 payload（金額、`order_items` 保存下單當時名稱與價格、`shipping_fee_status=pending`）
+  與查詢授權（手機不符／格式不足一律查不到、回傳不含身分證字號）——不在正式資料庫塞測試訂單。
+- `npm run build`：通過。
+- 本機對正式 Supabase 實測（皆不寫入資料）：`POST /api/cart/validate` 夾帶 `unitPrice: 1`
+  → 回應為資料庫價格 312，且缺貨回 `warnings` 不擋單；未發布商品回 `not_published`；
+  `POST /api/checkout` 帶未定價商品 → **409 且在建立訂單前就被擋下**（`orders` 仍為 0 筆）。
+  未建立真實測試訂單，避免污染正式訂單資料。

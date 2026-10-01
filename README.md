@@ -217,6 +217,41 @@ npm run price:missing -- --apply <CSV> --force   # 覆寫已有定價者
   （`not_published`／`invalid_price`／`already_priced`）。
 - 產出放在 `review/`（已 gitignore）；邏輯在 `scripts/lib/pricing.mjs`，`tests/pricing.test.ts` 8 項鎖住行為。
 
+### 購物車與結帳（`lib/cart.ts`、`lib/checkout-resolve.ts`）
+
+完整流程：**商品頁加入購物車 → 購物車 → 結帳 → 訂單完成 → 訂單查詢**。
+
+**安全原則：交易金額只由伺服器決定。**
+
+購物車存在瀏覽器 localStorage，內容可被使用者任意修改，所以：
+
+- 前端只送 `productId` 與 `quantity`（`checkoutSchema`），**名稱與單價一律由伺服器重取**
+  （`lib/checkout-resolve.ts` 以 `products` 表為準；前端偷帶的 `unitPrice` 會被 zod 直接丟掉）。
+  修正前 `/api/checkout` 直接採用前端價格 → 改 localStorage 就能 1 元下單。
+- 逐項驗證：商品必須 `status='published'`、`taiwan_suggested_price > 0`、`in_stock !== false`；
+  有任何一項不合格整筆拒絕（HTTP 409 + 問題清單），不會部分成立。
+- 單一商品數量上限 99、購物車最多 30 種（`lib/cart.ts` 的 `MAX_QUANTITY`／`MAX_ITEMS`）。
+
+**端點**
+
+| 端點 | 用途 |
+|---|---|
+| `POST /api/cart/validate` | 購物車即時校正：回傳資料庫的最新名稱／價格與問題清單（不寫入任何資料） |
+| `POST /api/checkout` | 建立訂單（只收 id 與數量；金額由伺服器算） |
+| `POST /api/orders/lookup` | 訂單查詢：需**訂單編號 + 下單手機**同時正確，回傳內容已遮罩 |
+
+**介面**
+
+- `/costco/cart`：數量直接輸入、移除、清空、即時校正（商品下架／改價／未定價會標示並可一鍵移除）、
+  小計與「目前應付」，未通過驗證時擋住結帳。
+- `/costco/checkout`：先向伺服器校正再顯示權威金額與訂單摘要；送出後清空購物車。
+- `/costco/success`：顯示訂單編號、明細、金額、進度與收貨資訊（皆已遮罩）。
+- `/costco/orders`：訂單查詢頁（訂單編號 + 手機），顯示流程進度。
+- 標頭「購物車」有數量徽章，同分頁與其他分頁變更都會即時更新（`subscribeCart`）。
+
+**運費**：下單時運費為 0（顯示「待人工確認後通知」），採購後由後台運費閘門
+（`/api/admin/orders/shipping-fee`）確認實際國際運費並通知補款 —— 這是刻意保留的人工卡點。
+
 ### Graph 冷啟動（`npm run bootstrap:entities`）
 
 重建後（或全新環境）`product_entity` 是空的，Agent 1–5 就沒有東西可評分 ——

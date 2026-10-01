@@ -21,6 +21,14 @@
 - 舊 AI 辨識是 Candidate Data，回看原圖確認後才能標記 `VERIFIED`。
 - 單一價格不是特價證據；需有 OFF／値引／期限等明確促銷文字。
 
+- **購物車金額只由伺服器決定**：前端只送 `productId` 與 `quantity`，名稱／單價一律由
+  `lib/checkout-resolve.ts` 從 `products` 重取（前端偷帶的價格會被 zod 丟棄）；商品必須
+  已發布、有台幣定價、非缺貨，任一項不合格就整筆拒絕（409），不可部分成立。
+  購物車存 localStorage 可被修改，**任何前端價格都不可信**。
+- 購物車上限：單一商品 99 件、最多 30 種（`lib/cart.ts`）；未定價商品不可加入購物車。
+- 訂單查詢（`POST /api/orders/lookup`）需訂單編號＋下單手機同時正確，回傳內容一律遮罩
+  （姓名／手機／地址），且不得包含身分證字號。
+
 ## 3.0 Product Intelligence Graph 規則
 - 新表一律 `create table if not exists` + RLS enable（service_role 存取），**不覆蓋 2.0 既有表**。
 - 所有評分與決策寫入 `score_snapshot`（可追溯）；門檻集中在 `lib/graph/config.ts`，不寫死。

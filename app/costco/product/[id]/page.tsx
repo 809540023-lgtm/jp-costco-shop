@@ -114,7 +114,15 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           ) : null}
 
           {sellable ? (
-            <AddToCart productId={product.id} name={product.zh_name || product.jp_name} price={price} imageUrl={product.image_url} />
+            <AddToCart
+              item={{
+                productId: product.id,
+                name: product.zh_name || product.jp_name,
+                unitPrice: price,
+                quantity: 1,
+                imageUrl: product.image_url ?? null
+              }}
+            />
           ) : (
             <div className="mt-5 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
               此商品尚未定價，暫不開放訂購。

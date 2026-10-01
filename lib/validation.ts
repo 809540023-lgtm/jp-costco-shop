@@ -6,11 +6,21 @@ const taiwanIdSchema = z.string().regex(/^[A-Z][0-9]{9}$/, "身分證字號格�
 // 台灣手機號碼：09 開頭共 10 碼
 const taiwanPhoneSchema = z.string().regex(/^09[0-9]{8}$/, "手機號碼格式錯誤（請輸入 09 開頭 10 碼）");
 
-export const cartItemSchema = z.object({
-  productId: z.string().min(1),
-  name: z.string().min(1),
-  unitPrice: z.number().positive(),
-  quantity: z.number().int().min(1).max(999),
+/**
+ * 結帳只接受「商品 id + 數量」。
+ *
+ * 名稱與單價一律由伺服器從資料庫重取（`lib/checkout-resolve.ts`），
+ * 前端傳來的價格不可以採用（購物車在瀏覽器裡，可被任意修改）。
+ */
+export const cartLineSchema = z.object({
+  productId: z.string().min(1).max(64),
+  quantity: z.number().int().min(1).max(99)
+});
+
+/** 相容舊資料（例如後台或測試仍在用的完整購物車項目）。 */
+export const cartItemSchema = cartLineSchema.extend({
+  name: z.string().optional(),
+  unitPrice: z.number().optional(),
   imageUrl: z.string().nullable().optional()
 });
 
@@ -34,9 +44,14 @@ export const customsSchema = z.object({
 });
 
 export const checkoutSchema = z.object({
-  items: z.array(cartItemSchema).min(1, "購物車是空的"),
+  items: z.array(cartLineSchema).min(1, "購物車是空的").max(30, "一次最多 30 種商品"),
   customer: customerSchema,
   customs: customsSchema
+});
+
+/** 購物車即時校正：只取 productId 與數量，其餘欄位一律忽略。 */
+export const cartValidateSchema = z.object({
+  items: z.array(z.unknown()).max(200)
 });
 
 export const productUpdateSchema = z.object({

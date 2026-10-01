@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import CartBadge from "@/components/cart-badge";
 
 export const metadata: Metadata = {
   title: "日本 Costco 精選購物",
@@ -13,9 +14,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="sticky top-0 z-20 bg-brand text-white shadow">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
             <a href="/costco" className="text-lg font-extrabold">🛒 日本 Costco</a>
-            <nav className="flex items-center gap-3">
+            <nav className="flex items-center gap-4 text-sm">
               <a href="/costco/live" className="font-bold text-amber-200">📺 直播</a>
-              <a href="/costco/cart" className="font-bold">購物車</a>
+              <a href="/costco/orders" className="font-bold">訂單</a>
+              <CartBadge />
             </nav>
           </div>
         </header>
